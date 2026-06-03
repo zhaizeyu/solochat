@@ -419,6 +419,13 @@ async function handleApi(req, res) {
         authorName: author?.displayName || '已注销用户',
         text: messagePreview(quotedMessage),
         kind: quotedMessage.kind || 'text',
+        sticker: quotedMessage.kind === 'sticker' && quotedMessage.sticker
+          ? {
+              id: quotedMessage.sticker.id,
+              name: quotedMessage.sticker.name,
+              imageDataUrl: quotedMessage.sticker.imageDataUrl
+            }
+          : null,
         createdAt: quotedMessage.createdAt,
         recalledAt: quotedMessage.recalledAt || null
       };

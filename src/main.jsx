@@ -237,6 +237,8 @@ function ContactList({
     setDisplayName(self.displayName);
   }, [self.displayName]);
 
+  const selectedBubblePreset = bubblePresets.find((preset) => preset.id === bubbleTheme) || bubblePresets[0];
+
   async function add(event) {
     event.preventDefault();
     if (!username.trim()) return;
@@ -367,7 +369,16 @@ function ContactList({
       </div>
       {profileError && <div className="inline-error">{profileError}</div>}
 
-      <section className="bubble-theme-picker" aria-label="气泡颜色">
+      <section
+        className="bubble-theme-picker"
+        aria-label="气泡颜色"
+        style={{
+          '--bubble-start': selectedBubblePreset.start,
+          '--bubble-end': selectedBubblePreset.end,
+          '--bubble-soft': selectedBubblePreset.soft,
+          '--bubble-shadow': selectedBubblePreset.shadow
+        }}
+      >
         <div className="contact-title">气泡颜色</div>
         <div className="bubble-theme-grid">
           {bubblePresets.map((preset) => (
@@ -389,6 +400,15 @@ function ContactList({
               <span />
             </button>
           ))}
+        </div>
+        <div
+          className="bubble-theme-preview"
+          style={{
+            background: `linear-gradient(135deg, ${selectedBubblePreset.start}, ${selectedBubblePreset.end})`,
+            boxShadow: `0 10px 26px ${selectedBubblePreset.shadow}`
+          }}
+        >
+          {selectedBubblePreset.name}气泡预览
         </div>
       </section>
 
@@ -431,8 +451,10 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
   const [stickerBusy, setStickerBusy] = useState(false);
   const [stickerManage, setStickerManage] = useState(false);
   const [selectedStickerIds, setSelectedStickerIds] = useState([]);
+  const [savingStickerMessageIds, setSavingStickerMessageIds] = useState([]);
   const bottomRef = useRef(null);
   const streamRef = useRef(null);
+  const textareaRef = useRef(null);
   const messageRefs = useRef(new Map());
   const isNearBottomRef = useRef(true);
   const previousContactIdRef = useRef(null);
@@ -508,8 +530,16 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
     window.setTimeout(() => node.classList.remove('message-highlight'), 900);
   }
 
+  function quoteMessage(message) {
+    setQuote(message);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+    });
+  }
+
   function renderQuote(quoted, interactive = false) {
     if (!quoted) return null;
+    const quotedSticker = quoted.kind === 'sticker' && quoted.sticker;
     return (
       <button
         type="button"
@@ -517,13 +547,60 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
         onClick={interactive ? () => scrollToMessage(quoted.id) : undefined}
       >
         <strong>{quoted.authorName || (quoted.fromId === self.id ? self.displayName : contact.displayName)}</strong>
-        <span>{quoted.recalledAt ? '消息已撤回' : quoted.text}</span>
+        {quoted.recalledAt ? (
+          <span>消息已撤回</span>
+        ) : quotedSticker ? (
+          <span className="quote-sticker-line">
+            <img src={quoted.sticker.imageDataUrl} alt={quoted.sticker.name || '表情包'} />
+            <span>{quoted.sticker.name || '表情包'}</span>
+          </span>
+        ) : (
+          <span>{quoted.text}</span>
+        )}
       </button>
     );
   }
 
   function getBubblePreset(themeId) {
     return bubblePresets.find((preset) => preset.id === themeId) || bubblePresets[0];
+  }
+
+  function getMessageBubbleStyle(preset, transparent = false) {
+    if (transparent) {
+      return {
+        background: 'transparent',
+        borderColor: 'transparent',
+        boxShadow: 'none'
+      };
+    }
+    return {
+      '--bubble-start': preset.start,
+      '--bubble-end': preset.end,
+      '--bubble-shadow': preset.shadow,
+      background: `linear-gradient(135deg, ${preset.start}, ${preset.end})`,
+      borderColor: 'transparent',
+      boxShadow: `0 10px 26px ${preset.shadow}`
+    };
+  }
+
+  function hasSavedSticker(sticker) {
+    return Boolean(sticker?.imageDataUrl && stickers.some((item) => item.imageDataUrl === sticker.imageDataUrl));
+  }
+
+  async function addStickerFromMessage(message) {
+    if (!message.sticker || hasSavedSticker(message.sticker) || savingStickerMessageIds.includes(message.id)) return;
+    setSavingStickerMessageIds((ids) => [...ids, message.id]);
+    try {
+      await onAddSticker({
+        name: message.sticker.name || '表情包',
+        imageDataUrl: message.sticker.imageDataUrl
+      });
+      setStickerOpen(true);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSavingStickerMessageIds((ids) => ids.filter((id) => id !== message.id));
+    }
   }
 
   async function recall(message) {
@@ -616,23 +693,25 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
           const sender = mine ? self : contact;
           const bubblePreset = getBubblePreset(sender?.bubbleTheme);
           const recalled = Boolean(message.recalledAt);
+          const stickerBubble = message.kind === 'sticker' && !recalled;
+          const canAddSticker = stickerBubble && !mine && message.sticker;
+          const stickerSaved = canAddSticker && hasSavedSticker(message.sticker);
+          const savingSticker = savingStickerMessageIds.includes(message.id);
           const canRecall = mine && !recalled && Date.now() - new Date(message.createdAt).getTime() <= 8 * 60 * 1000;
           return (
             <div
               key={message.id}
               className={`message-row ${mine ? 'mine' : ''}`}
-              style={{
-                '--bubble-start': bubblePreset.start,
-                '--bubble-end': bubblePreset.end,
-                '--bubble-shadow': bubblePreset.shadow
-              }}
               ref={(node) => {
                 if (node) messageRefs.current.set(message.id, node);
                 else messageRefs.current.delete(message.id);
               }}
             >
               {!mine && <Avatar user={contact} size="tiny" />}
-              <div className={`message-bubble ${message.kind === 'sticker' && !recalled ? 'sticker-bubble' : ''}`}>
+              <div
+                className={`message-bubble ${stickerBubble ? 'sticker-bubble' : ''}`}
+                style={getMessageBubbleStyle(bubblePreset, stickerBubble)}
+              >
                 <div>
                   {recalled ? (
                     <p className="message-recalled">消息已撤回</p>
@@ -647,7 +726,16 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
                     </>
                   )}
                   <div className="message-meta">
-                    {!recalled && <button type="button" onClick={() => setQuote(message)}>引用</button>}
+                    {!recalled && <button type="button" onClick={() => quoteMessage(message)}>引用</button>}
+                    {canAddSticker && (
+                      stickerSaved ? (
+                        <span className="sticker-saved-state">已添加</span>
+                      ) : (
+                        <button type="button" onClick={() => addStickerFromMessage(message)} disabled={savingSticker}>
+                          {savingSticker ? '添加中' : '添加表情'}
+                        </button>
+                      )
+                    )}
                     {canRecall && <button type="button" onClick={() => recall(message)}>撤回</button>}
                     {mine && <span className="read-state">{message.readAt ? '已读' : '未读'}</span>}
                     <time>{new Date(message.createdAt).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
@@ -670,6 +758,7 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
             </div>
           )}
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             placeholder={`发送给 ${contact.displayName}`}
@@ -884,9 +973,16 @@ function App() {
         bubbleTheme={user.bubbleTheme || 'mint'}
         bubblePresets={bubblePresets}
         onBubbleThemeChange={async (bubbleTheme) => {
-          const data = await api.updateBubbleTheme(bubbleTheme);
-          setUser(data.user);
-          await refreshContacts();
+          const previousUser = user;
+          setUser((current) => (current ? { ...current, bubbleTheme } : current));
+          try {
+            const data = await api.updateBubbleTheme(bubbleTheme);
+            setUser(data.user);
+            await refreshContacts();
+          } catch (err) {
+            setUser(previousUser);
+            throw err;
+          }
         }}
         onLogout={clearSession}
         onUpdateProfile={async (displayName) => {

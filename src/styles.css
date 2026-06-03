@@ -1,14 +1,14 @@
 :root {
   --canvas: #f5f1ec;
-  --canvas-soft: #fbf8f4;
+  --canvas-soft: #eef8f7;
   --surface: #ffffff;
-  --surface-muted: #ebe7e1;
+  --surface-muted: #dcefed;
   --surface-strong: #1597ff;
   --ink: #111111;
   --ink-muted: #626260;
   --ink-subtle: #7b7b78;
   --hairline: #d8d1c8;
-  --hairline-soft: #ebe7e1;
+  --hairline-soft: #cfe8e5;
   --accent: #12b886;
   --accent-blue: #1597ff;
   --accent-soft: #eaf8f5;
@@ -23,6 +23,7 @@
   --love-gradient: linear-gradient(135deg, var(--bubble-start) 0%, var(--bubble-end) 100%);
   --shadow-soft: 0 18px 48px rgba(17, 17, 17, 0.08);
   --shadow-tight: 0 8px 24px rgba(17, 17, 17, 0.06);
+  --block-shadow: 0 10px 24px rgba(18, 184, 134, 0.1);
   color: var(--ink);
   font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
   background: var(--canvas);
@@ -265,14 +266,16 @@ textarea:focus {
   height: 100dvh;
   display: grid;
   grid-template-columns: 330px 1fr;
-  background: var(--canvas);
+  background: linear-gradient(135deg, #eaf7f7 0%, #f7f2ec 100%);
   position: relative;
   overflow: hidden;
 }
 
 .sidebar {
   border-right: 1px solid var(--hairline);
-  background: var(--surface);
+  background:
+    linear-gradient(180deg, rgba(18, 184, 134, 0.12), rgba(21, 151, 255, 0.08) 42%, rgba(245, 241, 236, 0.72)),
+    var(--canvas-soft);
   padding: 18px;
   min-width: 0;
   overflow: hidden;
@@ -281,8 +284,13 @@ textarea:focus {
 }
 
 .profile-row {
-  padding-bottom: 18px;
-  border-bottom: 1px solid var(--hairline-soft);
+  padding: 12px;
+  border: 1px solid rgba(21, 151, 255, 0.14);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(234, 248, 245, 0.92)),
+    var(--surface);
+  box-shadow: var(--block-shadow);
 }
 
 .profile-copy {
@@ -344,7 +352,11 @@ textarea:focus {
 }
 
 .account-actions {
-  padding-top: 12px;
+  padding: 12px;
+  margin-top: 10px;
+  border: 1px solid rgba(18, 184, 134, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
 }
 
 .account-actions .danger-link {
@@ -353,7 +365,14 @@ textarea:focus {
 }
 
 .bubble-theme-picker {
-  padding-top: 14px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(18, 184, 134, 0.16);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, var(--bubble-soft), rgba(255, 255, 255, 0.82)),
+    var(--surface);
+  box-shadow: var(--block-shadow);
 }
 
 .bubble-theme-picker .contact-title {
@@ -390,9 +409,26 @@ textarea:focus {
   background: linear-gradient(135deg, var(--swatch-start), var(--swatch-end));
 }
 
+.bubble-theme-preview {
+  width: fit-content;
+  max-width: 100%;
+  margin-top: 12px;
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #ffffff;
+  background: var(--love-gradient);
+  box-shadow: 0 10px 26px var(--bubble-shadow);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .add-contact {
   grid-template-columns: 1fr 42px;
-  margin-top: 18px;
+  margin-top: 14px;
+  padding: 10px;
+  border: 1px solid rgba(21, 151, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
 }
 
 .add-contact button {
@@ -416,15 +452,15 @@ textarea:focus {
 .contact-list {
   overflow: auto;
   display: grid;
-  gap: 6px;
+  gap: 8px;
   padding-right: 2px;
 }
 
 .contact-item {
   width: 100%;
-  border: 0;
+  border: 1px solid rgba(21, 151, 255, 0.1);
   border-radius: 8px;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.62);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -435,7 +471,11 @@ textarea:focus {
 
 .contact-item:hover,
 .contact-item.selected {
-  background: var(--accent-soft);
+  border-color: rgba(18, 184, 134, 0.28);
+  background:
+    linear-gradient(135deg, rgba(234, 248, 245, 0.96), rgba(236, 248, 255, 0.92)),
+    var(--accent-soft);
+  box-shadow: var(--block-shadow);
 }
 
 .contact-copy {
@@ -473,13 +513,17 @@ textarea:focus {
   min-height: 0;
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: var(--canvas-soft);
+  background:
+    linear-gradient(180deg, rgba(234, 248, 245, 0.92), rgba(251, 248, 244, 0.94)),
+    var(--canvas-soft);
 }
 
 .chat-header {
   padding: 18px 24px;
-  border-bottom: 1px solid var(--hairline);
-  background: rgba(255, 255, 255, 0.88);
+  border-bottom: 1px solid rgba(18, 184, 134, 0.16);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.9)),
+    var(--surface);
   backdrop-filter: blur(10px);
 }
 
@@ -600,6 +644,26 @@ textarea:focus {
   font-size: 13px;
 }
 
+.quote-sticker-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.quote-sticker-line img {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.42);
+  flex: 0 0 auto;
+}
+
+.quote-sticker-line span {
+  min-width: 0;
+}
+
 .message-row .quote-card {
   background: rgba(255, 255, 255, 0.13);
   border-left-color: var(--accent);
@@ -630,7 +694,17 @@ textarea:focus {
   padding: 0;
 }
 
+.message-meta button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .read-state {
+  color: var(--ink-subtle);
+  font-size: 12px;
+}
+
+.sticker-saved-state {
   color: var(--ink-subtle);
   font-size: 12px;
 }
@@ -642,8 +716,30 @@ textarea:focus {
 
 .message-row time,
 .message-row .message-meta button,
-.message-row .read-state {
+.message-row .read-state,
+.message-row .sticker-saved-state {
   color: rgba(255, 255, 255, 0.75);
+}
+
+.message-row .sticker-bubble .quote-card {
+  background: rgba(255, 255, 255, 0.92);
+  border-left-color: var(--accent);
+  color: var(--ink-muted);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+}
+
+.message-row .sticker-bubble .quote-card strong {
+  color: var(--ink);
+}
+
+.message-row .sticker-bubble time,
+.message-row .sticker-bubble .read-state,
+.message-row .sticker-bubble .sticker-saved-state {
+  color: var(--ink-subtle);
+}
+
+.message-row .sticker-bubble .message-meta button {
+  color: var(--accent);
 }
 
 .message-highlight .message-bubble {
@@ -655,8 +751,10 @@ textarea:focus {
   grid-template-columns: 1fr 88px;
   gap: 10px 12px;
   padding: 12px 24px 18px;
-  background: var(--surface);
-  border-top: 1px solid var(--hairline);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.88)),
+    var(--surface);
+  border-top: 1px solid rgba(18, 184, 134, 0.16);
 }
 
 .composer-main {
