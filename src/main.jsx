@@ -11,9 +11,80 @@ const bubblePresets = [
   { id: 'lavender', name: '薰衣草', start: '#a18cd1', end: '#fbc2eb', soft: '#f8f0ff', shadow: 'rgba(161, 140, 209, 0.2)' }
 ];
 
+const TWEMOJI_BASE_URL = '/twemoji';
+const emojiMatcher = /(?:[\u{1F1E6}-\u{1F1FF}]{2}|[#*0-9]\uFE0F?\u20E3|\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?)*)/gu;
+const emojiGroups = [
+  {
+    id: 'smileys',
+    name: '表情',
+    items: ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '😉', '😍', '🥰', '😘', '😋', '😜', '🤗', '🤔', '😎', '🥳', '😭', '😤', '😡', '😴', '🤒']
+  },
+  {
+    id: 'gestures',
+    name: '手势',
+    items: ['👍', '👎', '👏', '🙌', '🙏', '🤝', '👌', '✌️', '🤞', '🤟', '🤘', '👊', '💪', '👋', '🤙', '🫶']
+  },
+  {
+    id: 'hearts',
+    name: '心情',
+    items: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '💕', '💞', '💯', '✨', '🔥', '🎉', '🎁', '🌟']
+  },
+  {
+    id: 'life',
+    name: '日常',
+    items: ['☀️', '🌙', '⭐', '☁️', '🌧️', '🌈', '🍎', '🍔', '🍜', '☕', '🍺', '⚽', '🎮', '🎧', '📷', '💻', '📱', '🚗']
+  }
+];
+
+function emojiToCodePoint(emoji) {
+  return Array.from(emoji)
+    .map((char) => char.codePointAt(0).toString(16))
+    .filter((code) => code !== 'fe0f')
+    .join('-');
+}
+
+function twemojiSrc(emoji) {
+  return `${TWEMOJI_BASE_URL}/${emojiToCodePoint(emoji)}.svg`;
+}
+
+function Twemoji({ emoji, className = 'twemoji' }) {
+  const [loaded, setLoaded] = useState(true);
+  if (!loaded) {
+    return (
+      <span className={`${className} emoji-fallback`} role="img" aria-label={emoji}>
+        {emoji}
+      </span>
+    );
+  }
+  return (
+    <img
+      className={className}
+      src={twemojiSrc(emoji)}
+      alt={emoji}
+      draggable="false"
+      onError={() => setLoaded(false)}
+    />
+  );
+}
+
+function renderTwemojiText(text) {
+  if (!text) return '';
+  const nodes = [];
+  let lastIndex = 0;
+  for (const match of text.matchAll(emojiMatcher)) {
+    const emoji = match[0];
+    const index = match.index || 0;
+    if (index > lastIndex) nodes.push(text.slice(lastIndex, index));
+    nodes.push(<Twemoji key={`${index}-${emoji}`} emoji={emoji} />);
+    lastIndex = index + emoji.length;
+  }
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return nodes;
+}
+
 const api = {
   async request(path, options = {}) {
-    const token = localStorage.getItem('solochat.token');
+    const token = localStorage.getItem('doolulu.token');
     const res = await fetch(path, {
       ...options,
       headers: {
@@ -141,7 +212,7 @@ function AuthPanel({ onLogin }) {
         await api.register(form);
       }
       const data = await api.login(form);
-      localStorage.setItem('solochat.token', data.token);
+      localStorage.setItem('doolulu.token', data.token);
       onLogin(data.user);
     } catch (err) {
       setError(err.message);
@@ -154,9 +225,9 @@ function AuthPanel({ onLogin }) {
     <main className="auth-shell">
       <section className="auth-panel">
         <div className="brand-block">
-          <div className="brand-mark">S</div>
+          <img className="brand-mark" src="/logo.jpg" alt="" />
           <div>
-            <h1>SoloChat</h1>
+            <h1>doolulu</h1>
             <p>多人联系人私聊</p>
           </div>
         </div>
@@ -447,6 +518,7 @@ function ContactList({
 function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, onSendSticker, onAddSticker, onDeleteStickers, onRecall }) {
   const [text, setText] = useState('');
   const [quote, setQuote] = useState(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [stickerOpen, setStickerOpen] = useState(false);
   const [stickerBusy, setStickerBusy] = useState(false);
   const [stickerManage, setStickerManage] = useState(false);
@@ -480,6 +552,11 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
     }
   }, [stickerOpen]);
 
+  useEffect(() => {
+    setEmojiOpen(false);
+    setStickerOpen(false);
+  }, [contact?.id]);
+
   async function submit(event) {
     event.preventDefault();
     const content = text.trim();
@@ -507,6 +584,19 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
     setText(nextText);
     requestAnimationFrame(() => {
       textarea.setSelectionRange(start + 1, start + 1);
+    });
+  }
+
+  function insertEmoji(emoji) {
+    const textarea = textareaRef.current;
+    const start = textarea?.selectionStart ?? text.length;
+    const end = textarea?.selectionEnd ?? text.length;
+    const nextText = `${text.slice(0, start)}${emoji}${text.slice(end)}`;
+    const nextPosition = start + emoji.length;
+    setText(nextText);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(nextPosition, nextPosition);
     });
   }
 
@@ -555,7 +645,7 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
             <span>{quoted.sticker.name || '表情包'}</span>
           </span>
         ) : (
-          <span>{quoted.text}</span>
+          <span>{renderTwemojiText(quoted.text)}</span>
         )}
       </button>
     );
@@ -670,7 +760,7 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
   if (!contact) {
     return (
       <section className="chat-empty">
-        <div className="empty-orbit">QQ</div>
+        <div className="empty-orbit">聊</div>
         <h2>选择一个联系人开始聊天</h2>
         <p>添加用户后即可发送私聊消息，聊天记录会保存在后台文件中。</p>
       </section>
@@ -721,7 +811,7 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
                       {message.kind === 'sticker' && message.sticker ? (
                         <img className="message-sticker" src={message.sticker.imageDataUrl} alt={message.sticker.name || '表情包'} />
                       ) : (
-                        <p>{message.text}</p>
+                        <p>{renderTwemojiText(message.text)}</p>
                       )}
                     </>
                   )}
@@ -774,12 +864,47 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
             }}
           />
           <div className="sticker-toolbar">
-            <button type="button" className={stickerOpen ? 'active' : ''} onClick={() => setStickerOpen((open) => !open)} title="表情包">
-              ☺
+            <button
+              type="button"
+              className={emojiOpen ? 'active' : ''}
+              onClick={() => {
+                setEmojiOpen((open) => !open);
+                setStickerOpen(false);
+              }}
+              title="Emoji"
+            >
+              <Twemoji emoji="😀" className="toolbar-icon" />
+            </button>
+            <button
+              type="button"
+              className={stickerOpen ? 'active' : ''}
+              onClick={() => {
+                setStickerOpen((open) => !open);
+                setEmojiOpen(false);
+              }}
+              title="表情包"
+            >
+              <Twemoji emoji="❤️" className="toolbar-icon" />
             </button>
           </div>
         </div>
         <button className="send-button" title="发送消息">发送</button>
+        {emojiOpen && (
+          <div className="emoji-panel">
+            {emojiGroups.map((group) => (
+              <section className="emoji-group" key={group.id}>
+                <h3>{group.name}</h3>
+                <div className="emoji-grid">
+                  {group.items.map((emoji) => (
+                    <button type="button" key={emoji} onClick={() => insertEmoji(emoji)} title={emoji}>
+                      <Twemoji emoji={emoji} className="emoji-option" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
         {stickerOpen && (
           <div className="sticker-panel">
             <div className="sticker-panel-header">
@@ -845,7 +970,7 @@ function App() {
   const originalTitleRef = useRef(document.title);
 
   function clearSession() {
-    localStorage.removeItem('solochat.token');
+    localStorage.removeItem('doolulu.token');
     setUser(null);
     setSelected(null);
     setMessages([]);
@@ -880,7 +1005,7 @@ function App() {
   }
 
   useEffect(() => {
-    const token = localStorage.getItem('solochat.token');
+    const token = localStorage.getItem('doolulu.token');
     if (!token) {
       setLoading(false);
       return;
@@ -888,7 +1013,7 @@ function App() {
     api
       .me()
       .then((data) => setUser(data.user))
-      .catch(() => localStorage.removeItem('solochat.token'))
+      .catch(() => localStorage.removeItem('doolulu.token'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -956,7 +1081,7 @@ function App() {
   const sortedContacts = useMemo(() => contacts, [contacts]);
 
   if (loading) {
-    return <div className="loading-screen">正在加载 SoloChat...</div>;
+    return <div className="loading-screen">正在加载 doolulu...</div>;
   }
 
   if (!user) {
