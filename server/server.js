@@ -14,6 +14,8 @@ const sessions = new Map();
 const recallWindowMs = 8 * 60 * 1000;
 const maxImageDataUrlLength = 700_000;
 const bubbleThemes = new Set(['mint', 'pink', 'purple', 'sky', 'peach', 'lavender']);
+const adminUsername = 'admin';
+const initialAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
 let db = {
   users: [],
@@ -25,12 +27,18 @@ let db = {
 async function loadDb() {
   await mkdir(dataDir, { recursive: true });
   if (!existsSync(dbPath)) {
+    ensureAdminUser();
     await saveDb();
     return;
   }
   const text = await readFile(dbPath, 'utf8');
   db = JSON.parse(text);
   db.stickers ||= [];
+  const deletedUsernamesReleased = releaseDeletedUsernames();
+  const adminUserEnsured = ensureAdminUser();
+  if (deletedUsernamesReleased || adminUserEnsured) {
+    await saveDb();
+  }
 }
 
 async function saveDb() {
@@ -87,7 +95,8 @@ function sanitizeUser(user) {
     avatarDataUrl: user.avatarDataUrl || '',
     bubbleTheme: bubbleThemes.has(user.bubbleTheme) ? user.bubbleTheme : 'mint',
     createdAt: user.createdAt,
-    disabledAt: user.disabledAt || null
+    disabledAt: user.disabledAt || null,
+    isAdmin: Boolean(user.isAdmin)
   };
 }
 
@@ -100,6 +109,47 @@ function getAuthUser(req) {
 
 function normalizeName(name) {
   return String(name || '').trim();
+}
+
+function findActiveUserByUsername(username) {
+  return db.users.find((user) => user.username === username && !user.disabledAt);
+}
+
+function ensureAdminUser() {
+  const admin = db.users.find((user) => user.username === adminUsername);
+  if (admin) {
+    if (!admin.isAdmin) {
+      admin.isAdmin = true;
+      return true;
+    }
+    return false;
+  }
+  db.users.push({
+    id: crypto.randomUUID(),
+    username: adminUsername,
+    displayName: '管理员',
+    passwordHash: hashPassword(initialAdminPassword),
+    isAdmin: true,
+    createdAt: new Date().toISOString()
+  });
+  return true;
+}
+
+function releaseDeletedUsername(user) {
+  if (String(user.username || '').startsWith('deleted:')) return false;
+  user.deletedUsername ||= user.username;
+  user.username = `deleted:${user.id}:${user.deletedUsername}`;
+  return true;
+}
+
+function releaseDeletedUsernames() {
+  let changed = false;
+  for (const user of db.users) {
+    if (user.disabledAt) {
+      changed = releaseDeletedUsername(user) || changed;
+    }
+  }
+  return changed;
 }
 
 function conversationKey(a, b) {
@@ -123,6 +173,17 @@ function sanitizeSticker(sticker) {
     name: sticker.name,
     imageDataUrl: sticker.imageDataUrl,
     createdAt: sticker.createdAt
+  };
+}
+
+function sanitizeAdminUser(user) {
+  return {
+    ...sanitizeUser(user),
+    avatarDataUrl: '',
+    deletedUsername: user.deletedUsername || null,
+    messageCount: db.messages.filter((message) => message.fromId === user.id || message.toId === user.id).length,
+    contactCount: db.contacts.filter((item) => item.ownerId === user.id || item.contactId === user.id).length,
+    stickerCount: db.stickers.filter((sticker) => sticker.ownerId === user.id).length
   };
 }
 
@@ -150,7 +211,7 @@ async function handleApi(req, res) {
     if (password.length < 6) {
       return json(res, 400, { message: '密码至少 6 位' });
     }
-    if (db.users.some((user) => user.username === username)) {
+    if (findActiveUserByUsername(username)) {
       return json(res, 409, { message: '用户名已存在' });
     }
 
@@ -169,8 +230,8 @@ async function handleApi(req, res) {
   if (req.method === 'POST' && pathName === '/api/login') {
     const body = await readBody(req);
     const username = normalizeName(body.username).toLowerCase();
-    const user = db.users.find((item) => item.username === username);
-    if (!user || user.disabledAt || !verifyPassword(String(body.password || ''), user.passwordHash)) {
+    const user = findActiveUserByUsername(username);
+    if (!user || !verifyPassword(String(body.password || ''), user.passwordHash)) {
       return json(res, 401, { message: '用户名或密码错误' });
     }
     const token = crypto.randomBytes(32).toString('hex');
@@ -188,6 +249,63 @@ async function handleApi(req, res) {
 
   if (req.method === 'GET' && pathName === '/api/me') {
     return json(res, 200, { user: sanitizeUser(user) });
+  }
+
+  if (pathName.startsWith('/api/admin/')) {
+    if (!user.isAdmin) {
+      return json(res, 403, { message: '需要管理员权限' });
+    }
+
+    if (req.method === 'GET' && pathName === '/api/admin/users') {
+      const users = db.users
+        .map(sanitizeAdminUser)
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      return json(res, 200, { users });
+    }
+
+    if (req.method === 'PATCH' && pathName.startsWith('/api/admin/users/') && pathName.endsWith('/password')) {
+      const userId = pathName.split('/').at(-2);
+      const target = db.users.find((item) => item.id === userId);
+      const body = await readBody(req);
+      const password = String(body.password || '');
+      if (!target) {
+        return json(res, 404, { message: '用户不存在' });
+      }
+      if (target.disabledAt) {
+        return json(res, 400, { message: '已注销用户不能重置密码' });
+      }
+      if (password.length < 6) {
+        return json(res, 400, { message: '密码至少 6 位' });
+      }
+      target.passwordHash = hashPassword(password);
+      await saveDb();
+      return json(res, 200, { user: sanitizeAdminUser(target) });
+    }
+
+    if (req.method === 'DELETE' && pathName.startsWith('/api/admin/users/') && pathName.endsWith('/data')) {
+      const userId = pathName.split('/').at(-2);
+      const target = db.users.find((item) => item.id === userId);
+      if (!target) {
+        return json(res, 404, { message: '用户不存在' });
+      }
+      if (!target.disabledAt) {
+        return json(res, 400, { message: '只能清理已注销用户的数据' });
+      }
+      if (target.isAdmin) {
+        return json(res, 400, { message: '不能清理管理员账号' });
+      }
+      db.users = db.users.filter((item) => item.id !== target.id);
+      db.contacts = db.contacts.filter((item) => item.ownerId !== target.id && item.contactId !== target.id);
+      db.messages = db.messages.filter((message) => message.fromId !== target.id && message.toId !== target.id);
+      db.stickers = db.stickers.filter((sticker) => sticker.ownerId !== target.id);
+      for (const [token, userIdForSession] of sessions.entries()) {
+        if (userIdForSession === target.id) sessions.delete(token);
+      }
+      await saveDb();
+      return json(res, 200, { ok: true });
+    }
+
+    return json(res, 404, { message: '接口不存在' });
   }
 
   if (req.method === 'PATCH' && pathName === '/api/me') {
@@ -256,9 +374,13 @@ async function handleApi(req, res) {
   }
 
   if (req.method === 'DELETE' && pathName === '/api/me') {
+    if (user.isAdmin) {
+      return json(res, 400, { message: '管理员账号不能注销' });
+    }
     const now = new Date().toISOString();
     user.disabledAt = now;
     user.displayName = `${user.displayName}（已注销）`;
+    releaseDeletedUsername(user);
     db.contacts = db.contacts.filter((item) => item.ownerId !== user.id && item.contactId !== user.id);
     for (const [token, userId] of sessions.entries()) {
       if (userId === user.id) sessions.delete(token);

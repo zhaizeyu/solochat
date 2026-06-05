@@ -173,6 +173,18 @@ const api = {
   },
   deleteAccount() {
     return this.request('/api/me', { method: 'DELETE' });
+  },
+  adminUsers() {
+    return this.request('/api/admin/users');
+  },
+  adminResetPassword(userId, password) {
+    return this.request(`/api/admin/users/${userId}/password`, {
+      method: 'PATCH',
+      body: JSON.stringify({ password })
+    });
+  },
+  adminCleanupUserData(userId) {
+    return this.request(`/api/admin/users/${userId}/data`, { method: 'DELETE' });
   }
 };
 
@@ -958,6 +970,136 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
   );
 }
 
+function AdminPanel({ self, onLogout }) {
+  const [users, setUsers] = useState([]);
+  const [passwords, setPasswords] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  async function loadUsers() {
+    const data = await api.adminUsers();
+    setUsers(data.users);
+  }
+
+  useEffect(() => {
+    loadUsers()
+      .catch((err) => setError(err.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function resetPassword(target) {
+    const password = String(passwords[target.id] || '');
+    if (password.length < 6) {
+      setError('密码至少 6 位');
+      return;
+    }
+    setBusyId(target.id);
+    setError('');
+    setNotice('');
+    try {
+      await api.adminResetPassword(target.id, password);
+      setPasswords((current) => ({ ...current, [target.id]: '' }));
+      setNotice(`已重置 ${target.displayName} 的密码`);
+      await loadUsers();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function cleanupUser(target) {
+    const ok = window.confirm(`确定清理 ${target.displayName} 的所有数据吗？该操作会永久删除账号、联系人、消息和表情包。`);
+    if (!ok) return;
+    setBusyId(target.id);
+    setError('');
+    setNotice('');
+    try {
+      await api.adminCleanupUserData(target.id);
+      setNotice(`已清理 ${target.displayName} 的所有数据`);
+      await loadUsers();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  return (
+    <main className="admin-shell">
+      <header className="admin-header">
+        <div className="brand-block">
+          <img className="brand-mark" src="/logo.jpg" alt="" />
+          <div>
+            <h1>管理员</h1>
+            <p>@{self.username}</p>
+          </div>
+        </div>
+        <div className="admin-actions">
+          <button type="button" onClick={() => loadUsers().catch((err) => setError(err.message))} disabled={Boolean(busyId)}>
+            刷新
+          </button>
+          <button type="button" onClick={onLogout}>退出</button>
+        </div>
+      </header>
+
+      <section className="admin-panel">
+        {error && <div className="inline-error">{error}</div>}
+        {notice && <div className="success-line">{notice}</div>}
+        {loading ? (
+          <div className="empty-list">正在加载用户...</div>
+        ) : (
+          <div className="admin-user-list">
+            {users.map((target) => {
+              const disabled = Boolean(target.disabledAt);
+              const busy = busyId === target.id;
+              return (
+                <article className={`admin-user ${disabled ? 'disabled' : ''}`} key={target.id}>
+                  <div className="admin-user-main">
+                    <Avatar user={target} size="small" />
+                    <div>
+                      <strong>{target.displayName}</strong>
+                      <span>@{target.deletedUsername || target.username}</span>
+                    </div>
+                  </div>
+                  <div className="admin-user-meta">
+                    <span>{target.isAdmin ? '管理员' : disabled ? '已注销' : '正常'}</span>
+                    <span>消息 {target.messageCount}</span>
+                    <span>联系人 {target.contactCount}</span>
+                    <span>表情 {target.stickerCount}</span>
+                  </div>
+                  <div className="admin-user-controls">
+                    <input
+                      type="password"
+                      value={passwords[target.id] || ''}
+                      onChange={(event) => setPasswords({ ...passwords, [target.id]: event.target.value })}
+                      placeholder="新密码"
+                      disabled={disabled || busy}
+                    />
+                    <button type="button" onClick={() => resetPassword(target)} disabled={disabled || busy}>
+                      重置密码
+                    </button>
+                    <button
+                      type="button"
+                      className="danger-link"
+                      onClick={() => cleanupUser(target)}
+                      disabled={!disabled || target.isAdmin || busy}
+                    >
+                      清理数据
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
 function App() {
   const [user, setUser] = useState(null);
   const [contacts, setContacts] = useState([]);
@@ -1086,6 +1228,10 @@ function App() {
 
   if (!user) {
     return <AuthPanel onLogin={setUser} />;
+  }
+
+  if (user.isAdmin) {
+    return <AdminPanel self={user} onLogout={clearSession} />;
   }
 
   return (
