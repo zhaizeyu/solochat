@@ -553,6 +553,17 @@ textarea:focus {
   scrollbar-gutter: stable;
 }
 
+.message-history-loader {
+  align-self: center;
+  min-height: 28px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink-subtle);
+  font-size: 12px;
+  line-height: 16px;
+}
+
 .message-row {
   display: flex;
   align-items: flex-start;

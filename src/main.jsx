@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 
@@ -35,6 +35,7 @@ const emojiGroups = [
     items: ['☀️', '🌙', '⭐', '☁️', '🌧️', '🌈', '🍎', '🍔', '🍜', '☕', '🍺', '⚽', '🎮', '🎧', '📷', '💻', '📱', '🚗']
   }
 ];
+const messagePageSize = 50;
 
 function emojiToCodePoint(emoji) {
   return Array.from(emoji)
@@ -114,8 +115,13 @@ const api = {
   addContact(username) {
     return this.request('/api/contacts', { method: 'POST', body: JSON.stringify({ username }) });
   },
-  messages(contactId) {
-    return this.request(`/api/messages/${contactId}`);
+  messages(contactId, params = {}) {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') search.set(key, value);
+    }
+    const suffix = search.toString() ? `?${search}` : '';
+    return this.request(`/api/messages/${contactId}${suffix}`);
   },
   sendMessage(toId, text) {
     return this.request('/api/messages', {
@@ -527,7 +533,21 @@ function ContactList({
   );
 }
 
-function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, onSendSticker, onAddSticker, onDeleteStickers, onRecall }) {
+function ChatWindow({
+  contact,
+  messages,
+  self,
+  stickers,
+  bubblePresets,
+  hasOlderMessages,
+  loadingOlderMessages,
+  onLoadOlderMessages,
+  onSend,
+  onSendSticker,
+  onAddSticker,
+  onDeleteStickers,
+  onRecall
+}) {
   const [text, setText] = useState('');
   const [quote, setQuote] = useState(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -543,14 +563,32 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
   const isNearBottomRef = useRef(true);
   const previousContactIdRef = useRef(null);
   const pendingScrollToBottomRef = useRef(false);
+  const previousMessagesRef = useRef([]);
+  const preserveScrollRef = useRef(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const stream = streamRef.current;
+    if (!stream) return;
+    const previousMessages = previousMessagesRef.current;
     const contactChanged = previousContactIdRef.current !== contact?.id;
-    if (contactChanged || pendingScrollToBottomRef.current || isNearBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: contactChanged ? 'auto' : 'smooth' });
+    const firstChanged = previousMessages[0]?.id !== messages[0]?.id;
+    const lastChanged = previousMessages.at(-1)?.id !== messages.at(-1)?.id;
+    const prependedHistory = !contactChanged && firstChanged && previousMessages.length > 0 && messages.at(-1)?.id === previousMessages.at(-1)?.id;
+
+    if (prependedHistory && preserveScrollRef.current) {
+      const { scrollHeight, scrollTop } = preserveScrollRef.current;
+      stream.scrollTop = stream.scrollHeight - scrollHeight + scrollTop;
+    } else if (contactChanged || previousMessages.length === 0) {
+      stream.scrollTop = stream.scrollHeight;
+      isNearBottomRef.current = true;
+    } else if (pendingScrollToBottomRef.current || (lastChanged && isNearBottomRef.current)) {
+      stream.scrollTop = stream.scrollHeight;
     }
+
     previousContactIdRef.current = contact?.id || null;
+    previousMessagesRef.current = messages;
     pendingScrollToBottomRef.current = false;
+    preserveScrollRef.current = null;
   }, [messages, contact?.id]);
 
   useEffect(() => {
@@ -616,6 +654,13 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
     const node = event.currentTarget;
     const distanceToBottom = node.scrollHeight - node.scrollTop - node.clientHeight;
     isNearBottomRef.current = distanceToBottom < 80;
+    if (node.scrollTop < 80 && hasOlderMessages && !loadingOlderMessages) {
+      preserveScrollRef.current = {
+        scrollHeight: node.scrollHeight,
+        scrollTop: node.scrollTop
+      };
+      onLoadOlderMessages?.();
+    }
   }
 
   function handleWheel(event) {
@@ -790,6 +835,11 @@ function ChatWindow({ contact, messages, self, stickers, bubblePresets, onSend, 
       </header>
 
       <div className="message-stream" ref={streamRef} onScroll={updateScrollPosition} onWheel={handleWheel}>
+        {(hasOlderMessages || loadingOlderMessages) && (
+          <div className="message-history-loader">
+            {loadingOlderMessages ? '正在加载更早消息...' : '向上滚动加载更早消息'}
+          </div>
+        )}
         {messages.map((message) => {
           const mine = message.fromId === self.id;
           const sender = mine ? self : contact;
@@ -1105,17 +1155,35 @@ function App() {
   const [contacts, setContacts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [stickers, setStickers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pageVisible, setPageVisible] = useState(() => !document.hidden);
   const selectedId = selected?.id;
+  const messagesRef = useRef([]);
+  const loadingOlderMessagesRef = useRef(false);
+  const hasOlderMessagesRef = useRef(false);
   const originalTitleRef = useRef(document.title);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  useEffect(() => {
+    loadingOlderMessagesRef.current = loadingOlderMessages;
+  }, [loadingOlderMessages]);
+
+  useEffect(() => {
+    hasOlderMessagesRef.current = hasOlderMessages;
+  }, [hasOlderMessages]);
 
   function clearSession() {
     localStorage.removeItem('doolulu.token');
     setUser(null);
     setSelected(null);
     setMessages([]);
+    setHasOlderMessages(false);
     setStickers([]);
     setContacts([]);
   }
@@ -1129,16 +1197,82 @@ function App() {
     }
   }
 
-  async function refreshMessages(contactId = selectedId) {
+  function mergeMessages(current, incoming) {
+    const byId = new Map(current.map((message) => [message.id, message]));
+    for (const message of incoming) byId.set(message.id, message);
+    return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  async function loadLatestMessages(contactId = selectedId) {
     if (!contactId) return;
-    const data = await api.messages(contactId);
+    const data = await api.messages(contactId, { limit: messagePageSize });
     setMessages(data.messages);
+    setHasOlderMessages(Boolean(data.hasMore));
+  }
+
+  async function refreshNewMessages(contactId = selectedId) {
+    if (!contactId) return;
+    const current = messagesRef.current;
+    if (current.length === 0) {
+      await loadLatestMessages(contactId);
+      return;
+    }
+    const newest = current.at(-1);
+    const data = await api.messages(contactId, { after: newest.createdAt, limit: messagePageSize });
+    if (data.messages.length > 0) {
+      setMessages((items) => mergeMessages(items, data.messages));
+    }
+  }
+
+  async function loadOlderMessages(contactId = selectedId) {
+    if (!contactId || loadingOlderMessagesRef.current || !hasOlderMessagesRef.current) return;
+    const oldest = messagesRef.current[0];
+    if (!oldest) return;
+    loadingOlderMessagesRef.current = true;
+    setLoadingOlderMessages(true);
+    try {
+      const data = await api.messages(contactId, { before: oldest.createdAt, limit: messagePageSize });
+      setMessages((items) => mergeMessages(data.messages, items));
+      setHasOlderMessages(Boolean(data.hasMore));
+    } finally {
+      loadingOlderMessagesRef.current = false;
+      setLoadingOlderMessages(false);
+    }
+  }
+
+  async function refreshMessages(contactId = selectedId) {
+    await loadLatestMessages(contactId);
+  }
+
+  function upsertMessages(incoming) {
+    const items = Array.isArray(incoming) ? incoming : [incoming];
+    setMessages((current) => mergeMessages(current, items));
+  }
+
+  function markMessagesReadLocally(contactId, readAt) {
+    if (!readAt) return;
+    setMessages((items) =>
+      items.map((message) =>
+        message.toId === user.id && !message.readAt
+          ? { ...message, readAt }
+          : message
+      )
+    );
+  }
+
+  function selectContact(contact) {
+    setMessages([]);
+    setHasOlderMessages(false);
+    setLoadingOlderMessages(false);
+    messagesRef.current = [];
+    setSelected(contact);
   }
 
   async function markSelectedRead(contactId = selectedId) {
     if (!contactId) return;
-    await api.markRead(contactId);
-    await Promise.all([refreshMessages(contactId), refreshContacts()]);
+    const data = await api.markRead(contactId);
+    markMessagesReadLocally(contactId, data.readAt);
+    await refreshContacts();
   }
 
   async function refreshStickers() {
@@ -1190,11 +1324,14 @@ function App() {
   useEffect(() => {
     if (!selectedId) {
       setMessages([]);
+      setHasOlderMessages(false);
       return;
     }
-    refreshMessages(selectedId).catch(console.error);
+    setMessages([]);
+    setHasOlderMessages(false);
+    loadLatestMessages(selectedId).catch(console.error);
     const timer = setInterval(() => {
-      refreshMessages(selectedId).catch(console.error);
+      refreshNewMessages(selectedId).catch(console.error);
     }, 1500);
     return () => clearInterval(timer);
   }, [selectedId]);
@@ -1239,7 +1376,7 @@ function App() {
       <ContactList
         contacts={sortedContacts}
         selectedId={selectedId}
-        onSelect={setSelected}
+        onSelect={selectContact}
         self={user}
         bubbleTheme={user.bubbleTheme || 'mint'}
         bubblePresets={bubblePresets}
@@ -1281,13 +1418,18 @@ function App() {
         self={user}
         stickers={stickers}
         bubblePresets={bubblePresets}
+        hasOlderMessages={hasOlderMessages}
+        loadingOlderMessages={loadingOlderMessages}
+        onLoadOlderMessages={() => loadOlderMessages(selected.id).catch(console.error)}
         onSend={async (text, quoteId) => {
-          await api.sendQuotedMessage(selected.id, text, quoteId);
-          await Promise.all([refreshMessages(selected.id), refreshContacts()]);
+          const data = await api.sendQuotedMessage(selected.id, text, quoteId);
+          upsertMessages(data.message);
+          await refreshContacts();
         }}
         onSendSticker={async (stickerId, quoteId) => {
-          await api.sendSticker(selected.id, stickerId, quoteId);
-          await Promise.all([refreshMessages(selected.id), refreshContacts()]);
+          const data = await api.sendSticker(selected.id, stickerId, quoteId);
+          upsertMessages(data.message);
+          await refreshContacts();
         }}
         onAddSticker={async (payload) => {
           await api.addSticker(payload);
@@ -1298,8 +1440,9 @@ function App() {
           await refreshStickers();
         }}
         onRecall={async (messageId) => {
-          await api.recallMessage(messageId);
-          await Promise.all([refreshMessages(selected.id), refreshContacts()]);
+          const data = await api.recallMessage(messageId);
+          upsertMessages(data.message);
+          await refreshContacts();
         }}
       />
     </main>
