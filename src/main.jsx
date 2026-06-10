@@ -36,6 +36,10 @@ const emojiGroups = [
   }
 ];
 const messagePageSize = 50;
+const initialPlannerTasks = [
+  { id: 1, time: '周五 19:30', place: '日料小馆', plan: '晚餐后去江边散步', confirmedByA: true, confirmedByB: false, done: false },
+  { id: 2, time: '周六 下午', place: '家里', plan: '一起整理旅行清单', confirmedByA: false, confirmedByB: false, done: false }
+];
 
 function emojiToCodePoint(emoji) {
   return Array.from(emoji)
@@ -65,6 +69,140 @@ function Twemoji({ emoji, className = 'twemoji' }) {
       draggable="false"
       onError={() => setLoaded(false)}
     />
+  );
+}
+
+function CouplePlannerPreview() {
+  const [tasks, setTasks] = useState(initialPlannerTasks);
+  const [draft, setDraft] = useState({ time: '', place: '', plan: '' });
+  const completedCount = tasks.filter((task) => task.done).length;
+
+  function addTask(event) {
+    event.preventDefault();
+    const time = draft.time.trim();
+    const place = draft.place.trim();
+    const plan = draft.plan.trim();
+    if (!time && !place && !plan) return;
+    setTasks((current) => [
+      {
+        id: Date.now(),
+        time,
+        place,
+        plan,
+        confirmedByA: false,
+        confirmedByB: false,
+        done: false
+      },
+      ...current
+    ]);
+    setDraft({ time: '', place: '', plan: '' });
+  }
+
+  function updateTask(taskId, patch) {
+    setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, ...patch } : task)));
+  }
+
+  function deleteTask(taskId) {
+    setTasks((current) => current.filter((task) => task.id !== taskId));
+  }
+
+  return (
+    <main className="planner-preview">
+      <section className="planner-shell">
+        <div className="planner-header">
+          <div className="planner-avatar-pair" aria-hidden="true">
+            <span>你</span>
+            <span>Ta</span>
+          </div>
+          <div>
+            <h1>两个人的 To Do List</h1>
+            <p>
+              共 {tasks.length} 个计划，已完成 {completedCount} 个
+            </p>
+          </div>
+        </div>
+
+        <form className="planner-form" onSubmit={addTask}>
+          <label>
+            时间
+            <input
+              value={draft.time}
+              onChange={(event) => setDraft({ ...draft, time: event.target.value })}
+              placeholder="例如：周五 19:30"
+            />
+          </label>
+          <label>
+            地点
+            <input
+              value={draft.place}
+              onChange={(event) => setDraft({ ...draft, place: event.target.value })}
+              placeholder="例如：家里 / 餐厅"
+            />
+          </label>
+          <label className="planner-form-plan">
+            计划
+            <input
+              value={draft.plan}
+              onChange={(event) => setDraft({ ...draft, plan: event.target.value })}
+              placeholder="写下要一起做的事"
+            />
+          </label>
+          <button type="submit">添加</button>
+        </form>
+
+        <div className="planner-task-list">
+          {tasks.map((task) => {
+            const confirmed = task.confirmedByA && task.confirmedByB;
+            return (
+              <article className={`planner-task ${task.done ? 'done' : ''}`} key={task.id}>
+                <label className="planner-check">
+                  <input
+                    type="checkbox"
+                    checked={task.done}
+                    onChange={(event) => updateTask(task.id, { done: event.target.checked })}
+                  />
+                  <span>{task.done ? '已完成' : '完成'}</span>
+                </label>
+
+                <div className="planner-task-main">
+                  <h2>{task.plan || '未填写计划'}</h2>
+                  <div className="planner-task-fields">
+                    <span>{task.time || '未填写时间'}</span>
+                    <span>{task.place || '未填写地点'}</span>
+                  </div>
+                </div>
+
+                <div className="planner-confirm-actions" aria-label="双方确认">
+                  <button
+                    type="button"
+                    className={task.confirmedByA ? 'active' : ''}
+                    onClick={() => updateTask(task.id, { confirmedByA: !task.confirmedByA })}
+                  >
+                    你确认
+                  </button>
+                  <button
+                    type="button"
+                    className={task.confirmedByB ? 'active' : ''}
+                    onClick={() => updateTask(task.id, { confirmedByB: !task.confirmedByB })}
+                  >
+                    Ta 确认
+                  </button>
+                  <button
+                    type="button"
+                    className="planner-delete-button"
+                    onClick={() => deleteTask(task.id)}
+                  >
+                    删除
+                  </button>
+                  <strong className={confirmed ? 'ready' : ''}>{confirmed ? '双方已确认' : '待确认'}</strong>
+                </div>
+              </article>
+            );
+          })}
+          {tasks.length === 0 && <div className="planner-empty">还没有计划。</div>}
+        </div>
+      </section>
+    </main>
   );
 }
 
@@ -1151,6 +1289,10 @@ function AdminPanel({ self, onLogout }) {
 }
 
 function App() {
+  if (window.location.pathname === '/couple-planner') {
+    return <CouplePlannerPreview />;
+  }
+
   const [user, setUser] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [selected, setSelected] = useState(null);
