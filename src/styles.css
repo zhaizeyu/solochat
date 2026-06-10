@@ -523,10 +523,22 @@ textarea:focus {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-columns: minmax(0, 1fr) 0;
+  grid-template-rows: minmax(0, 1fr);
   background:
     linear-gradient(180deg, rgba(234, 248, 245, 0.92), rgba(251, 248, 244, 0.94)),
     var(--canvas-soft);
+}
+
+.chat-panel.planner-open {
+  grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
+}
+
+.chat-core {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .chat-header {
@@ -538,8 +550,41 @@ textarea:focus {
   backdrop-filter: blur(10px);
 }
 
+.chat-header-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  flex: 1;
+}
+
 .chat-header h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 18px;
+}
+
+.planner-header-button {
+  min-height: 34px;
+  border: 1px solid rgba(18, 184, 134, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.76);
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 900;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.planner-header-button:hover,
+.planner-header-button.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mobile-chat-tabs,
+.chat-mobile-planner {
+  display: none;
 }
 
 .message-stream {
@@ -1051,6 +1096,223 @@ textarea:focus {
   min-height: 64px;
 }
 
+.chat-desktop-planner {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-panel:not(.planner-open) .chat-desktop-planner {
+  display: none;
+}
+
+.planner-drawer {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  border-left: 1px solid rgba(18, 184, 134, 0.16);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(234, 248, 245, 0.9)),
+    var(--surface);
+}
+
+.planner-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(18, 184, 134, 0.14);
+}
+
+.planner-drawer-header > div:last-child {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.planner-drawer-header h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+}
+
+.planner-drawer-header p {
+  color: var(--ink-subtle);
+  font-size: 13px;
+}
+
+.planner-drawer-controls {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(18, 184, 134, 0.12);
+}
+
+.planner-add-toggle {
+  height: 38px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--brand-gradient);
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.planner-drawer-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.planner-drawer-form input {
+  height: 38px;
+}
+
+.planner-drawer-plan,
+.planner-drawer-form button {
+  grid-column: 1 / -1;
+}
+
+.planner-drawer-form button {
+  height: 38px;
+  border: 1px solid rgba(18, 184, 134, 0.22);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 900;
+}
+
+.planner-filter-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(18, 184, 134, 0.12);
+}
+
+.planner-filter-tabs button {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  color: var(--ink-muted);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 0 6px;
+}
+
+.planner-filter-tabs button.active {
+  border-color: rgba(18, 184, 134, 0.3);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.planner-drawer-list {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px 14px 18px;
+  scrollbar-gutter: stable;
+}
+
+.planner-mini-task {
+  border: 1px solid rgba(81, 108, 102, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow-tight);
+}
+
+.planner-mini-task.done {
+  opacity: 0.68;
+}
+
+.planner-mini-main {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  padding: 12px;
+}
+
+.planner-mini-main input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.planner-mini-main button {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  display: grid;
+  gap: 5px;
+  padding: 0;
+  text-align: left;
+}
+
+.planner-mini-main strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.planner-mini-task.done .planner-mini-main strong {
+  text-decoration: line-through;
+}
+
+.planner-mini-main em {
+  overflow: hidden;
+  color: var(--ink-subtle);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner-mini-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 12px 12px 43px;
+}
+
+.planner-mini-actions button {
+  min-height: 32px;
+  border: 1px solid #dfe7e4;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #4f5d59;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.planner-mini-actions button.active {
+  border-color: rgba(18, 184, 134, 0.28);
+  background: #eaf8f1;
+  color: #16835e;
+}
+
+.planner-mini-actions .planner-delete-button {
+  border-color: #f1c5bd;
+  color: var(--danger);
+}
+
+.planner-drawer-empty {
+  border: 1px dashed rgba(81, 108, 102, 0.24);
+  border-radius: 8px;
+  color: var(--ink-subtle);
+  padding: 18px;
+  text-align: center;
+  font-size: 13px;
+}
+
 .chat-empty {
   display: grid;
   align-content: center;
@@ -1433,6 +1695,82 @@ textarea:focus {
   .sidebar {
     border-right: 0;
     border-bottom: 1px solid var(--hairline);
+  }
+
+  .chat-panel,
+  .chat-panel.planner-open {
+    grid-template-columns: 1fr;
+  }
+
+  .chat-core {
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  }
+
+  .chat-header {
+    padding: 12px;
+  }
+
+  .planner-header-button {
+    display: none;
+  }
+
+  .mobile-chat-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.72);
+    border-bottom: 1px solid rgba(18, 184, 134, 0.12);
+  }
+
+  .mobile-chat-tabs button {
+    height: 32px;
+    border: 1px solid var(--hairline-soft);
+    border-radius: 8px;
+    background: var(--surface);
+    color: var(--ink-muted);
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  .mobile-chat-tabs button.active {
+    border-color: rgba(18, 184, 134, 0.3);
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+
+  .chat-desktop-planner {
+    display: none;
+  }
+
+  .chat-core.mobile-planner-active {
+    grid-template-rows: auto auto minmax(0, 1fr);
+  }
+
+  .chat-core.mobile-planner-active .message-stream,
+  .chat-core.mobile-planner-active .composer {
+    display: none;
+  }
+
+  .chat-core.mobile-planner-active .chat-mobile-planner {
+    display: block;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .chat-mobile-planner .planner-drawer {
+    border-left: 0;
+  }
+
+  .chat-mobile-planner .planner-drawer-header {
+    padding: 12px;
+  }
+
+  .chat-mobile-planner .planner-drawer-controls,
+  .chat-mobile-planner .planner-filter-tabs,
+  .chat-mobile-planner .planner-drawer-list {
+    padding-left: 12px;
+    padding-right: 12px;
   }
 
   .message-stream {

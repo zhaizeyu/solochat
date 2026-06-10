@@ -206,6 +206,145 @@ function CouplePlannerPreview() {
   );
 }
 
+function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onAddTask, onUpdateTask, onDeleteTask }) {
+  const [draft, setDraft] = useState({ time: '', place: '', plan: '' });
+  const [formOpen, setFormOpen] = useState(false);
+  const [filter, setFilter] = useState('active');
+  const [expandedTaskId, setExpandedTaskId] = useState(null);
+  const completedCount = tasks.filter((task) => task.done).length;
+  const activeCount = tasks.length - completedCount;
+  const pendingConfirmCount = tasks.filter((task) => !task.done && !(task.confirmedByA && task.confirmedByB)).length;
+
+  function submitTask(event) {
+    event.preventDefault();
+    const time = draft.time.trim();
+    const place = draft.place.trim();
+    const plan = draft.plan.trim();
+    if (!time && !place && !plan) return;
+    onAddTask({ time, place, plan });
+    setDraft({ time: '', place: '', plan: '' });
+    setFormOpen(false);
+  }
+
+  const visibleTasks = tasks.filter((task) => {
+    if (filter === 'done') return task.done;
+    if (filter === 'confirmed') return !task.done && task.confirmedByA && task.confirmedByB;
+    if (filter === 'pending') return !task.done && !(task.confirmedByA && task.confirmedByB);
+    return !task.done;
+  });
+
+  return (
+    <aside className="planner-drawer" aria-label="两个人的待办">
+      <div className="planner-drawer-header">
+        <div className="planner-avatar-pair" aria-hidden="true">
+          <span>{selfLabel}</span>
+          <span>{contactLabel}</span>
+        </div>
+        <div>
+          <h2>一起计划</h2>
+          <p>
+            共 {tasks.length} 个，未完成 {activeCount} 个，待确认 {pendingConfirmCount} 个
+          </p>
+        </div>
+      </div>
+
+      <div className="planner-drawer-controls">
+        <button type="button" className="planner-add-toggle" onClick={() => setFormOpen((open) => !open)}>
+          {formOpen ? '收起添加' : '+ 添加计划'}
+        </button>
+        {formOpen && (
+          <form className="planner-drawer-form" onSubmit={submitTask}>
+            <input
+              value={draft.time}
+              onChange={(event) => setDraft({ ...draft, time: event.target.value })}
+              placeholder="时间"
+            />
+            <input
+              value={draft.place}
+              onChange={(event) => setDraft({ ...draft, place: event.target.value })}
+              placeholder="地点"
+            />
+            <input
+              className="planner-drawer-plan"
+              value={draft.plan}
+              onChange={(event) => setDraft({ ...draft, plan: event.target.value })}
+              placeholder="写下要一起做的事"
+            />
+            <button type="submit">添加</button>
+          </form>
+        )}
+      </div>
+
+      <div className="planner-filter-tabs" aria-label="待办筛选">
+        <button type="button" className={filter === 'active' ? 'active' : ''} onClick={() => setFilter('active')}>
+          未完成
+        </button>
+        <button type="button" className={filter === 'pending' ? 'active' : ''} onClick={() => setFilter('pending')}>
+          待确认
+        </button>
+        <button type="button" className={filter === 'confirmed' ? 'active' : ''} onClick={() => setFilter('confirmed')}>
+          已确认
+        </button>
+        <button type="button" className={filter === 'done' ? 'active' : ''} onClick={() => setFilter('done')}>
+          已完成
+        </button>
+      </div>
+
+      <div className="planner-drawer-list">
+        {visibleTasks.map((task) => {
+          const confirmed = task.confirmedByA && task.confirmedByB;
+          const expanded = expandedTaskId === task.id;
+          return (
+            <article className={`planner-mini-task ${task.done ? 'done' : ''}`} key={task.id}>
+              <div className="planner-mini-main">
+                <input
+                  type="checkbox"
+                  checked={task.done}
+                  onChange={(event) => onUpdateTask(task.id, { done: event.target.checked })}
+                  aria-label={task.done ? '标记未完成' : '标记完成'}
+                />
+                <button type="button" onClick={() => setExpandedTaskId(expanded ? null : task.id)}>
+                  <strong>{task.plan || '未填写计划'}</strong>
+                  <em>
+                    {task.time || '未填写时间'} · {task.place || '未填写地点'} · {confirmed ? '双方已确认' : '待确认'}
+                  </em>
+                </button>
+              </div>
+
+              {expanded && (
+                <div className="planner-mini-actions" aria-label="双方确认">
+                  <button
+                    type="button"
+                    className={task.confirmedByA ? 'active' : ''}
+                    onClick={() => onUpdateTask(task.id, { confirmedByA: !task.confirmedByA })}
+                  >
+                    你确认
+                  </button>
+                  <button
+                    type="button"
+                    className={task.confirmedByB ? 'active' : ''}
+                    onClick={() => onUpdateTask(task.id, { confirmedByB: !task.confirmedByB })}
+                  >
+                    Ta 确认
+                  </button>
+                  <button type="button" className="planner-delete-button" onClick={() => onDeleteTask(task.id)}>
+                    删除
+                  </button>
+                </div>
+              )}
+            </article>
+          );
+        })}
+        {visibleTasks.length === 0 && (
+          <div className="planner-drawer-empty">
+            {tasks.length === 0 ? '还没有计划。' : '当前筛选下没有计划。'}
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 function renderTwemojiText(text) {
   if (!text) return '';
   const nodes = [];
@@ -694,6 +833,9 @@ function ChatWindow({
   const [stickerManage, setStickerManage] = useState(false);
   const [selectedStickerIds, setSelectedStickerIds] = useState([]);
   const [savingStickerMessageIds, setSavingStickerMessageIds] = useState([]);
+  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [mobilePane, setMobilePane] = useState('chat');
+  const [plannerTasks, setPlannerTasks] = useState([]);
   const bottomRef = useRef(null);
   const streamRef = useRef(null);
   const textareaRef = useRef(null);
@@ -731,6 +873,7 @@ function ChatWindow({
 
   useEffect(() => {
     setQuote(null);
+    setMobilePane('chat');
   }, [contact?.id]);
 
   useEffect(() => {
@@ -744,6 +887,62 @@ function ChatWindow({
     setEmojiOpen(false);
     setStickerOpen(false);
   }, [contact?.id]);
+
+  useEffect(() => {
+    if (!contact || !self) {
+      setPlannerTasks([]);
+      return;
+    }
+    const saved = localStorage.getItem(`doolulu.planner.${self.id}.${contact.id}`);
+    if (!saved) {
+      setPlannerTasks([]);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(saved);
+      setPlannerTasks(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setPlannerTasks([]);
+    }
+  }, [contact?.id, self?.id]);
+
+  function savePlannerTasks(nextTasks) {
+    if (!contact || !self) return;
+    localStorage.setItem(`doolulu.planner.${self.id}.${contact.id}`, JSON.stringify(nextTasks));
+  }
+
+  function updatePlannerTasks(updater) {
+    setPlannerTasks((current) => {
+      const nextTasks = typeof updater === 'function' ? updater(current) : updater;
+      savePlannerTasks(nextTasks);
+      return nextTasks;
+    });
+  }
+
+  function addPlannerTask(task) {
+    updatePlannerTasks((current) => [
+      {
+        id: Date.now(),
+        time: task.time,
+        place: task.place,
+        plan: task.plan,
+        confirmedByA: false,
+        confirmedByB: false,
+        done: false
+      },
+      ...current
+    ]);
+    setPlannerOpen(true);
+    setMobilePane('planner');
+  }
+
+  function updatePlannerTask(taskId, patch) {
+    updatePlannerTasks((current) => current.map((task) => (task.id === taskId ? { ...task, ...patch } : task)));
+  }
+
+  function deletePlannerTask(taskId) {
+    updatePlannerTasks((current) => current.filter((task) => task.id !== taskId));
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -962,198 +1161,243 @@ function ChatWindow({
     );
   }
 
+  const activePlannerCount = plannerTasks.filter((task) => !task.done).length;
+  function renderPlanner() {
+    return (
+      <CouplePlannerPanel
+        tasks={plannerTasks}
+        selfLabel="你"
+        contactLabel={contact.displayName.slice(0, 1) || 'Ta'}
+        onAddTask={addPlannerTask}
+        onUpdateTask={updatePlannerTask}
+        onDeleteTask={deletePlannerTask}
+      />
+    );
+  }
+
   return (
-    <section className="chat-panel">
-      <header className="chat-header">
-        <Avatar user={contact} />
-        <div>
-          <h2>{contact.displayName}</h2>
-          <span>@{contact.username}</span>
-        </div>
-      </header>
-
-      <div className="message-stream" ref={streamRef} onScroll={updateScrollPosition} onWheel={handleWheel}>
-        {(hasOlderMessages || loadingOlderMessages) && (
-          <div className="message-history-loader">
-            {loadingOlderMessages ? '正在加载更早消息...' : '向上滚动加载更早消息'}
+    <section className={`chat-panel ${plannerOpen ? 'planner-open' : ''}`}>
+      <div className={`chat-core ${mobilePane === 'planner' ? 'mobile-planner-active' : ''}`}>
+        <header className="chat-header">
+          <Avatar user={contact} />
+          <div className="chat-header-copy">
+            <h2>{contact.displayName}</h2>
+            <span>@{contact.username}</span>
           </div>
-        )}
-        {messages.map((message) => {
-          const mine = message.fromId === self.id;
-          const sender = mine ? self : contact;
-          const bubblePreset = getBubblePreset(sender?.bubbleTheme);
-          const recalled = Boolean(message.recalledAt);
-          const stickerBubble = message.kind === 'sticker' && !recalled;
-          const canAddSticker = stickerBubble && !mine && message.sticker;
-          const stickerSaved = canAddSticker && hasSavedSticker(message.sticker);
-          const savingSticker = savingStickerMessageIds.includes(message.id);
-          const canRecall = mine && !recalled && Date.now() - new Date(message.createdAt).getTime() <= 8 * 60 * 1000;
-          return (
-            <div
-              key={message.id}
-              className={`message-row ${mine ? 'mine' : ''}`}
-              ref={(node) => {
-                if (node) messageRefs.current.set(message.id, node);
-                else messageRefs.current.delete(message.id);
-              }}
-            >
-              {!mine && <Avatar user={contact} size="tiny" />}
-              <div
-                className={`message-bubble ${stickerBubble ? 'sticker-bubble' : ''}`}
-                style={getMessageBubbleStyle(bubblePreset, stickerBubble)}
-              >
-                <div>
-                  {recalled ? (
-                    <p className="message-recalled">消息已撤回</p>
-                  ) : (
-                    <>
-                      {renderQuote(message.quote, true)}
-                      {message.kind === 'sticker' && message.sticker ? (
-                        <img className="message-sticker" src={message.sticker.imageDataUrl} alt={message.sticker.name || '表情包'} />
-                      ) : (
-                        <p>{renderTwemojiText(message.text)}</p>
-                      )}
-                    </>
-                  )}
-                  <div className="message-meta">
-                    {!recalled && <button type="button" onClick={() => quoteMessage(message)}>引用</button>}
-                    {canAddSticker && (
-                      stickerSaved ? (
-                        <span className="sticker-saved-state">已添加</span>
-                      ) : (
-                        <button type="button" onClick={() => addStickerFromMessage(message)} disabled={savingSticker}>
-                          {savingSticker ? '添加中' : '添加表情'}
-                        </button>
-                      )
-                    )}
-                    {canRecall && <button type="button" onClick={() => recall(message)}>撤回</button>}
-                    {mine && <span className="read-state">{message.readAt ? '已读' : '未读'}</span>}
-                    <time>{new Date(message.createdAt).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
-                  </div>
-                </div>
-              </div>
-              {mine && <Avatar user={self} size="tiny" />}
-            </div>
-          );
-        })}
-        <div ref={bottomRef} />
-      </div>
+          <button
+            type="button"
+            className={`planner-header-button ${plannerOpen ? 'active' : ''}`}
+            onClick={() => {
+              setPlannerOpen((open) => !open);
+              setMobilePane('planner');
+            }}
+          >
+            待办 {activePlannerCount}
+          </button>
+        </header>
 
-      <form className="composer" onSubmit={submit}>
-        <div className="composer-main">
-          {quote && (
-            <div className="composer-quote">
-              {renderQuote(quote)}
-              <button type="button" onClick={() => setQuote(null)}>取消引用</button>
+        <div className="mobile-chat-tabs" aria-label="聊天视图切换">
+          <button type="button" className={mobilePane === 'chat' ? 'active' : ''} onClick={() => setMobilePane('chat')}>
+            聊天
+          </button>
+          <button
+            type="button"
+            className={mobilePane === 'planner' ? 'active' : ''}
+            onClick={() => {
+              setPlannerOpen(true);
+              setMobilePane('planner');
+            }}
+          >
+            待办 {activePlannerCount}
+          </button>
+        </div>
+
+        <div className="chat-mobile-planner">{renderPlanner()}</div>
+
+        <div className="message-stream" ref={streamRef} onScroll={updateScrollPosition} onWheel={handleWheel}>
+          {(hasOlderMessages || loadingOlderMessages) && (
+            <div className="message-history-loader">
+              {loadingOlderMessages ? '正在加载更早消息...' : '向上滚动加载更早消息'}
             </div>
           )}
-          <textarea
-            ref={textareaRef}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            placeholder={`发送给 ${contact.displayName}`}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && event.ctrlKey) {
-                insertLineBreak(event);
-                return;
-              }
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                submit(event);
-              }
-            }}
-          />
-          <div className="sticker-toolbar">
-            <button
-              type="button"
-              className={emojiOpen ? 'active' : ''}
-              onClick={() => {
-                setEmojiOpen((open) => !open);
-                setStickerOpen(false);
-              }}
-              title="Emoji"
-            >
-              <Twemoji emoji="😀" className="toolbar-icon" />
-            </button>
-            <button
-              type="button"
-              className={stickerOpen ? 'active' : ''}
-              onClick={() => {
-                setStickerOpen((open) => !open);
-                setEmojiOpen(false);
-              }}
-              title="表情包"
-            >
-              <Twemoji emoji="❤️" className="toolbar-icon" />
-            </button>
-          </div>
-        </div>
-        <button className="send-button" title="发送消息">发送</button>
-        {emojiOpen && (
-          <div className="emoji-panel">
-            {emojiGroups.map((group) => (
-              <section className="emoji-group" key={group.id}>
-                <h3>{group.name}</h3>
-                <div className="emoji-grid">
-                  {group.items.map((emoji) => (
-                    <button type="button" key={emoji} onClick={() => insertEmoji(emoji)} title={emoji}>
-                      <Twemoji emoji={emoji} className="emoji-option" />
-                    </button>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-        {stickerOpen && (
-          <div className="sticker-panel">
-            <div className="sticker-panel-header">
-              <span>{stickerManage ? `已选择 ${selectedStickerIds.length}` : '我的表情'}</span>
-              <div>
-                {stickerManage && (
-                  <button type="button" className="danger-link" onClick={deleteSelectedStickers} disabled={selectedStickerIds.length === 0}>
-                    删除
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStickerManage((manage) => !manage);
-                    setSelectedStickerIds([]);
-                  }}
-                  disabled={stickers.length === 0}
+          {messages.map((message) => {
+            const mine = message.fromId === self.id;
+            const sender = mine ? self : contact;
+            const bubblePreset = getBubblePreset(sender?.bubbleTheme);
+            const recalled = Boolean(message.recalledAt);
+            const stickerBubble = message.kind === 'sticker' && !recalled;
+            const canAddSticker = stickerBubble && !mine && message.sticker;
+            const stickerSaved = canAddSticker && hasSavedSticker(message.sticker);
+            const savingSticker = savingStickerMessageIds.includes(message.id);
+            const canRecall = mine && !recalled && Date.now() - new Date(message.createdAt).getTime() <= 8 * 60 * 1000;
+            return (
+              <div
+                key={message.id}
+                className={`message-row ${mine ? 'mine' : ''}`}
+                ref={(node) => {
+                  if (node) messageRefs.current.set(message.id, node);
+                  else messageRefs.current.delete(message.id);
+                }}
+              >
+                {!mine && <Avatar user={contact} size="tiny" />}
+                <div
+                  className={`message-bubble ${stickerBubble ? 'sticker-bubble' : ''}`}
+                  style={getMessageBubbleStyle(bubblePreset, stickerBubble)}
                 >
-                  {stickerManage ? '完成' : '管理'}
-                </button>
+                  <div>
+                    {recalled ? (
+                      <p className="message-recalled">消息已撤回</p>
+                    ) : (
+                      <>
+                        {renderQuote(message.quote, true)}
+                        {message.kind === 'sticker' && message.sticker ? (
+                          <img className="message-sticker" src={message.sticker.imageDataUrl} alt={message.sticker.name || '表情包'} />
+                        ) : (
+                          <p>{renderTwemojiText(message.text)}</p>
+                        )}
+                      </>
+                    )}
+                    <div className="message-meta">
+                      {!recalled && <button type="button" onClick={() => quoteMessage(message)}>引用</button>}
+                      {canAddSticker && (
+                        stickerSaved ? (
+                          <span className="sticker-saved-state">已添加</span>
+                        ) : (
+                          <button type="button" onClick={() => addStickerFromMessage(message)} disabled={savingSticker}>
+                            {savingSticker ? '添加中' : '添加表情'}
+                          </button>
+                        )
+                      )}
+                      {canRecall && <button type="button" onClick={() => recall(message)}>撤回</button>}
+                      {mine && <span className="read-state">{message.readAt ? '已读' : '未读'}</span>}
+                      <time>{new Date(message.createdAt).toLocaleString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</time>
+                    </div>
+                  </div>
+                </div>
+                {mine && <Avatar user={self} size="tiny" />}
               </div>
+            );
+          })}
+          <div ref={bottomRef} />
+        </div>
+
+        <form className="composer" onSubmit={submit}>
+          <div className="composer-main">
+            {quote && (
+              <div className="composer-quote">
+                {renderQuote(quote)}
+                <button type="button" onClick={() => setQuote(null)}>取消引用</button>
+              </div>
+            )}
+            <textarea
+              ref={textareaRef}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              placeholder={`发送给 ${contact.displayName}`}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && event.ctrlKey) {
+                  insertLineBreak(event);
+                  return;
+                }
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  submit(event);
+                }
+              }}
+            />
+            <div className="sticker-toolbar">
+              <button
+                type="button"
+                className={emojiOpen ? 'active' : ''}
+                onClick={() => {
+                  setEmojiOpen((open) => !open);
+                  setStickerOpen(false);
+                }}
+                title="Emoji"
+              >
+                <Twemoji emoji="😀" className="toolbar-icon" />
+              </button>
+              <button
+                type="button"
+                className={stickerOpen ? 'active' : ''}
+                onClick={() => {
+                  setStickerOpen((open) => !open);
+                  setEmojiOpen(false);
+                }}
+                title="表情包"
+              >
+                <Twemoji emoji="❤️" className="toolbar-icon" />
+              </button>
             </div>
-            <div className="sticker-grid">
-              {!stickerManage && (
-                <label className="sticker-import">
-                  <span>+</span>
-                  <input type="file" accept="image/*" onChange={importSticker} disabled={stickerBusy} />
-                </label>
-              )}
-              {stickers.map((sticker) => {
-                const selected = selectedStickerIds.includes(sticker.id);
-                return (
+          </div>
+          <button className="send-button" title="发送消息">发送</button>
+          {emojiOpen && (
+            <div className="emoji-panel">
+              {emojiGroups.map((group) => (
+                <section className="emoji-group" key={group.id}>
+                  <h3>{group.name}</h3>
+                  <div className="emoji-grid">
+                    {group.items.map((emoji) => (
+                      <button type="button" key={emoji} onClick={() => insertEmoji(emoji)} title={emoji}>
+                        <Twemoji emoji={emoji} className="emoji-option" />
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+          {stickerOpen && (
+            <div className="sticker-panel">
+              <div className="sticker-panel-header">
+                <span>{stickerManage ? `已选择 ${selectedStickerIds.length}` : '我的表情'}</span>
+                <div>
+                  {stickerManage && (
+                    <button type="button" className="danger-link" onClick={deleteSelectedStickers} disabled={selectedStickerIds.length === 0}>
+                      删除
+                    </button>
+                  )}
                   <button
                     type="button"
-                    key={sticker.id}
-                    className={selected ? 'selected' : ''}
-                    onClick={() => (stickerManage ? toggleStickerSelection(sticker.id) : sendSticker(sticker))}
-                    title={sticker.name}
+                    onClick={() => {
+                      setStickerManage((manage) => !manage);
+                      setSelectedStickerIds([]);
+                    }}
+                    disabled={stickers.length === 0}
                   >
-                    <img src={sticker.imageDataUrl} alt={sticker.name} />
-                    {stickerManage && <span className="sticker-check">{selected ? '✓' : ''}</span>}
+                    {stickerManage ? '完成' : '管理'}
                   </button>
-                );
-              })}
-              {stickers.length === 0 && <div className="sticker-empty">导入图片后可作为表情发送</div>}
+                </div>
+              </div>
+              <div className="sticker-grid">
+                {!stickerManage && (
+                  <label className="sticker-import">
+                    <span>+</span>
+                    <input type="file" accept="image/*" onChange={importSticker} disabled={stickerBusy} />
+                  </label>
+                )}
+                {stickers.map((sticker) => {
+                  const selected = selectedStickerIds.includes(sticker.id);
+                  return (
+                    <button
+                      type="button"
+                      key={sticker.id}
+                      className={selected ? 'selected' : ''}
+                      onClick={() => (stickerManage ? toggleStickerSelection(sticker.id) : sendSticker(sticker))}
+                      title={sticker.name}
+                    >
+                      <img src={sticker.imageDataUrl} alt={sticker.name} />
+                      {stickerManage && <span className="sticker-check">{selected ? '✓' : ''}</span>}
+                    </button>
+                  );
+                })}
+                {stickers.length === 0 && <div className="sticker-empty">导入图片后可作为表情发送</div>}
+              </div>
             </div>
-          </div>
-        )}
-      </form>
+          )}
+        </form>
+      </div>
+      <div className="chat-desktop-planner">{renderPlanner()}</div>
     </section>
   );
 }
