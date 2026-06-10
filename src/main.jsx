@@ -36,10 +36,6 @@ const emojiGroups = [
   }
 ];
 const messagePageSize = 50;
-const initialPlannerTasks = [
-  { id: 1, time: '周五 19:30', place: '日料小馆', plan: '晚餐后去江边散步', confirmedByA: true, confirmedByB: false, done: false },
-  { id: 2, time: '周六 下午', place: '家里', plan: '一起整理旅行清单', confirmedByA: false, confirmedByB: false, done: false }
-];
 
 function emojiToCodePoint(emoji) {
   return Array.from(emoji)
@@ -72,141 +68,7 @@ function Twemoji({ emoji, className = 'twemoji' }) {
   );
 }
 
-function CouplePlannerPreview() {
-  const [tasks, setTasks] = useState(initialPlannerTasks);
-  const [draft, setDraft] = useState({ time: '', place: '', plan: '' });
-  const completedCount = tasks.filter((task) => task.done).length;
-
-  function addTask(event) {
-    event.preventDefault();
-    const time = draft.time.trim();
-    const place = draft.place.trim();
-    const plan = draft.plan.trim();
-    if (!time && !place && !plan) return;
-    setTasks((current) => [
-      {
-        id: Date.now(),
-        time,
-        place,
-        plan,
-        confirmedByA: false,
-        confirmedByB: false,
-        done: false
-      },
-      ...current
-    ]);
-    setDraft({ time: '', place: '', plan: '' });
-  }
-
-  function updateTask(taskId, patch) {
-    setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, ...patch } : task)));
-  }
-
-  function deleteTask(taskId) {
-    setTasks((current) => current.filter((task) => task.id !== taskId));
-  }
-
-  return (
-    <main className="planner-preview">
-      <section className="planner-shell">
-        <div className="planner-header">
-          <div className="planner-avatar-pair" aria-hidden="true">
-            <span>你</span>
-            <span>Ta</span>
-          </div>
-          <div>
-            <h1>两个人的 To Do List</h1>
-            <p>
-              共 {tasks.length} 个计划，已完成 {completedCount} 个
-            </p>
-          </div>
-        </div>
-
-        <form className="planner-form" onSubmit={addTask}>
-          <label>
-            时间
-            <input
-              value={draft.time}
-              onChange={(event) => setDraft({ ...draft, time: event.target.value })}
-              placeholder="例如：周五 19:30"
-            />
-          </label>
-          <label>
-            地点
-            <input
-              value={draft.place}
-              onChange={(event) => setDraft({ ...draft, place: event.target.value })}
-              placeholder="例如：家里 / 餐厅"
-            />
-          </label>
-          <label className="planner-form-plan">
-            计划
-            <input
-              value={draft.plan}
-              onChange={(event) => setDraft({ ...draft, plan: event.target.value })}
-              placeholder="写下要一起做的事"
-            />
-          </label>
-          <button type="submit">添加</button>
-        </form>
-
-        <div className="planner-task-list">
-          {tasks.map((task) => {
-            const confirmed = task.confirmedByA && task.confirmedByB;
-            return (
-              <article className={`planner-task ${task.done ? 'done' : ''}`} key={task.id}>
-                <label className="planner-check">
-                  <input
-                    type="checkbox"
-                    checked={task.done}
-                    onChange={(event) => updateTask(task.id, { done: event.target.checked })}
-                  />
-                  <span>{task.done ? '已完成' : '完成'}</span>
-                </label>
-
-                <div className="planner-task-main">
-                  <h2>{task.plan || '未填写计划'}</h2>
-                  <div className="planner-task-fields">
-                    <span>{task.time || '未填写时间'}</span>
-                    <span>{task.place || '未填写地点'}</span>
-                  </div>
-                </div>
-
-                <div className="planner-confirm-actions" aria-label="双方确认">
-                  <button
-                    type="button"
-                    className={task.confirmedByA ? 'active' : ''}
-                    onClick={() => updateTask(task.id, { confirmedByA: !task.confirmedByA })}
-                  >
-                    你确认
-                  </button>
-                  <button
-                    type="button"
-                    className={task.confirmedByB ? 'active' : ''}
-                    onClick={() => updateTask(task.id, { confirmedByB: !task.confirmedByB })}
-                  >
-                    Ta 确认
-                  </button>
-                  <button
-                    type="button"
-                    className="planner-delete-button"
-                    onClick={() => deleteTask(task.id)}
-                  >
-                    删除
-                  </button>
-                  <strong className={confirmed ? 'ready' : ''}>{confirmed ? '双方已确认' : '待确认'}</strong>
-                </div>
-              </article>
-            );
-          })}
-          {tasks.length === 0 && <div className="planner-empty">还没有计划。</div>}
-        </div>
-      </section>
-    </main>
-  );
-}
-
-function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onAddTask, onUpdateTask, onDeleteTask }) {
+function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onAddTask, onUpdateTask, onDeleteTask, onClose }) {
   const [draft, setDraft] = useState({ time: '', place: '', plan: '' });
   const [formOpen, setFormOpen] = useState(false);
   const [filter, setFilter] = useState('active');
@@ -215,13 +77,17 @@ function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onA
   const activeCount = tasks.length - completedCount;
   const pendingConfirmCount = tasks.filter((task) => !task.done && !(task.confirmedByA && task.confirmedByB)).length;
 
-  function submitTask(event) {
+  async function submitTask(event) {
     event.preventDefault();
     const time = draft.time.trim();
     const place = draft.place.trim();
     const plan = draft.plan.trim();
     if (!time && !place && !plan) return;
-    onAddTask({ time, place, plan });
+    try {
+      await onAddTask({ time, place, plan });
+    } catch {
+      return;
+    }
     setDraft({ time: '', place: '', plan: '' });
     setFormOpen(false);
   }
@@ -240,12 +106,17 @@ function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onA
           <span>{selfLabel}</span>
           <span>{contactLabel}</span>
         </div>
-        <div>
+        <div className="planner-drawer-title">
           <h2>一起计划</h2>
           <p>
-            共 {tasks.length} 个，未完成 {activeCount} 个，待确认 {pendingConfirmCount} 个
+            共 {tasks.length} 个，已完成 {completedCount} 个，未完成 {activeCount} 个，其中 {pendingConfirmCount} 个待确认
           </p>
         </div>
+        {onClose && (
+          <button type="button" className="planner-close-button" onClick={onClose} aria-label="收回待办">
+            收回
+          </button>
+        )}
       </div>
 
       <div className="planner-drawer-controls">
@@ -323,7 +194,7 @@ function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onA
                   <button
                     type="button"
                     className={task.confirmedByB ? 'active' : ''}
-                    onClick={() => onUpdateTask(task.id, { confirmedByB: !task.confirmedByB })}
+                    disabled
                   >
                     Ta 确认
                   </button>
@@ -423,6 +294,30 @@ const api = {
   },
   recallMessage(messageId) {
     return this.request(`/api/messages/${messageId}/recall`, { method: 'PATCH' });
+  },
+  plannerTasks(contactId) {
+    return this.request(`/api/planner/${contactId}`);
+  },
+  addPlannerTask(contactId, payload) {
+    return this.request(`/api/planner/${contactId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+  updatePlannerTask(taskId, payload) {
+    return this.request(`/api/planner/tasks/${taskId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    });
+  },
+  confirmPlannerTask(taskId, confirmed) {
+    return this.request(`/api/planner/tasks/${taskId}/confirm`, {
+      method: 'PATCH',
+      body: JSON.stringify({ confirmed })
+    });
+  },
+  deletePlannerTask(taskId) {
+    return this.request(`/api/planner/tasks/${taskId}`, { method: 'DELETE' });
   },
   updateProfile(displayName) {
     return this.request('/api/me', {
@@ -823,7 +718,8 @@ function ChatWindow({
   onSendSticker,
   onAddSticker,
   onDeleteStickers,
-  onRecall
+  onRecall,
+  onBack
 }) {
   const [text, setText] = useState('');
   const [quote, setQuote] = useState(null);
@@ -893,55 +789,58 @@ function ChatWindow({
       setPlannerTasks([]);
       return;
     }
-    const saved = localStorage.getItem(`doolulu.planner.${self.id}.${contact.id}`);
-    if (!saved) {
-      setPlannerTasks([]);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(saved);
-      setPlannerTasks(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setPlannerTasks([]);
-    }
+    let active = true;
+    setPlannerTasks([]);
+    api.plannerTasks(contact.id)
+      .then((data) => {
+        if (active) setPlannerTasks(data.tasks);
+      })
+      .catch((err) => {
+        if (active) alert(err.message);
+      });
+    return () => {
+      active = false;
+    };
   }, [contact?.id, self?.id]);
 
-  function savePlannerTasks(nextTasks) {
-    if (!contact || !self) return;
-    localStorage.setItem(`doolulu.planner.${self.id}.${contact.id}`, JSON.stringify(nextTasks));
+  function replacePlannerTask(task) {
+    setPlannerTasks((current) => current.map((item) => (item.id === task.id ? task : item)));
   }
 
-  function updatePlannerTasks(updater) {
-    setPlannerTasks((current) => {
-      const nextTasks = typeof updater === 'function' ? updater(current) : updater;
-      savePlannerTasks(nextTasks);
-      return nextTasks;
-    });
+  async function addPlannerTask(task) {
+    if (!contact) return;
+    try {
+      const data = await api.addPlannerTask(contact.id, task);
+      setPlannerTasks((current) => [data.task, ...current.filter((item) => item.id !== data.task.id)]);
+      setPlannerOpen(true);
+      setMobilePane('planner');
+    } catch (err) {
+      alert(err.message);
+      throw err;
+    }
   }
 
-  function addPlannerTask(task) {
-    updatePlannerTasks((current) => [
-      {
-        id: Date.now(),
-        time: task.time,
-        place: task.place,
-        plan: task.plan,
-        confirmedByA: false,
-        confirmedByB: false,
-        done: false
-      },
-      ...current
-    ]);
-    setPlannerOpen(true);
-    setMobilePane('planner');
+  async function updatePlannerTask(taskId, patch) {
+    try {
+      if (Object.hasOwn(patch, 'confirmedByA')) {
+        const data = await api.confirmPlannerTask(taskId, patch.confirmedByA);
+        replacePlannerTask(data.task);
+        return;
+      }
+      const data = await api.updatePlannerTask(taskId, patch);
+      replacePlannerTask(data.task);
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
-  function updatePlannerTask(taskId, patch) {
-    updatePlannerTasks((current) => current.map((task) => (task.id === taskId ? { ...task, ...patch } : task)));
-  }
-
-  function deletePlannerTask(taskId) {
-    updatePlannerTasks((current) => current.filter((task) => task.id !== taskId));
+  async function deletePlannerTask(taskId) {
+    try {
+      await api.deletePlannerTask(taskId);
+      setPlannerTasks((current) => current.filter((task) => task.id !== taskId));
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   async function submit(event) {
@@ -1162,6 +1061,11 @@ function ChatWindow({
   }
 
   const activePlannerCount = plannerTasks.filter((task) => !task.done).length;
+  function closePlanner() {
+    setPlannerOpen(false);
+    setMobilePane('chat');
+  }
+
   function renderPlanner() {
     return (
       <CouplePlannerPanel
@@ -1171,6 +1075,7 @@ function ChatWindow({
         onAddTask={addPlannerTask}
         onUpdateTask={updatePlannerTask}
         onDeleteTask={deletePlannerTask}
+        onClose={closePlanner}
       />
     );
   }
@@ -1179,6 +1084,9 @@ function ChatWindow({
     <section className={`chat-panel ${plannerOpen ? 'planner-open' : ''}`}>
       <div className={`chat-core ${mobilePane === 'planner' ? 'mobile-planner-active' : ''}`}>
         <header className="chat-header">
+          <button type="button" className="mobile-back-button" onClick={onBack} aria-label="返回联系人">
+            返回
+          </button>
           <Avatar user={contact} />
           <div className="chat-header-copy">
             <h2>{contact.displayName}</h2>
@@ -1533,10 +1441,6 @@ function AdminPanel({ self, onLogout }) {
 }
 
 function App() {
-  if (window.location.pathname === '/couple-planner') {
-    return <CouplePlannerPreview />;
-  }
-
   const [user, setUser] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -1758,7 +1662,7 @@ function App() {
   }
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${selected ? 'mobile-chat-selected' : 'mobile-contact-selected'}`}>
       <ContactList
         contacts={sortedContacts}
         selectedId={selectedId}
@@ -1830,6 +1734,7 @@ function App() {
           upsertMessages(data.message);
           await refreshContacts();
         }}
+        onBack={() => setSelected(null)}
       />
     </main>
   );
