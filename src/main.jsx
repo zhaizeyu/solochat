@@ -37,6 +37,68 @@ const emojiGroups = [
 ];
 const messagePageSize = 50;
 
+function cls(...items) {
+  return items.filter(Boolean).join(' ');
+}
+
+const ui = {
+  shell: 'min-h-screen bg-[var(--canvas)] text-[var(--ink)]',
+  panel: 'rounded-lg border border-[var(--hairline)] bg-white shadow-[var(--shadow-soft)]',
+  mutedText: 'text-sm text-[var(--ink-muted)]',
+  input: 'h-11 w-full rounded-lg border border-[var(--hairline)] bg-white px-3 text-[var(--ink)] outline-none transition focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--focus)] disabled:cursor-not-allowed disabled:opacity-60',
+  button: 'inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60',
+  primaryButton: 'bg-[var(--brand-gradient)] text-white shadow-[0_10px_24px_rgba(18,184,134,0.18)] hover:brightness-105',
+  subtleButton: 'border border-[var(--hairline)] bg-white text-[var(--ink-muted)] hover:border-[var(--accent)] hover:text-[var(--ink)]',
+  dangerButton: 'border border-[#f1c5bd] bg-[#fff4f2] text-[var(--danger)] hover:bg-white',
+  fieldLabel: 'grid gap-2 text-sm font-bold text-[var(--ink-muted)]',
+  noticeError: 'rounded-lg border border-[#f1c5bd] bg-[#fff4f2] px-3 py-2 text-sm text-[var(--danger)]'
+};
+
+function TextField({ label, className = '', ...props }) {
+  return (
+    <label className={ui.fieldLabel}>
+      {label}
+      <input className={cls(ui.input, className)} {...props} />
+    </label>
+  );
+}
+
+function Button({ variant = 'subtle', className = '', ...props }) {
+  const variants = {
+    primary: ui.primaryButton,
+    subtle: ui.subtleButton,
+    danger: ui.dangerButton,
+    ghost: 'bg-transparent text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)]'
+  };
+  return <button className={cls(ui.button, variants[variant], className)} {...props} />;
+}
+
+function SegmentedControl({ options, value, onChange, className = '', ariaLabel }) {
+  return (
+    <div
+      className={cls('grid gap-1 rounded-lg bg-[var(--surface-muted)] p-1', className)}
+      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      role="tablist"
+      aria-label={ariaLabel}
+    >
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={cls(
+            'min-h-9 rounded-md px-3 text-sm font-bold text-[var(--ink-muted)] transition',
+            value === option.value && 'bg-white text-[var(--ink)] shadow-[0_1px_5px_rgba(17,17,17,0.10)]'
+          )}
+          onClick={() => onChange(option.value)}
+          aria-pressed={value === option.value}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function emojiToCodePoint(emoji) {
   return Array.from(emoji)
     .map((char) => char.codePointAt(0).toString(16))
@@ -100,114 +162,117 @@ function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onA
   });
 
   return (
-    <aside className="planner-drawer" aria-label="两个人的待办">
-      <div className="planner-drawer-header">
-        <div className="planner-avatar-pair" aria-hidden="true">
-          <span>{selfLabel}</span>
-          <span>{contactLabel}</span>
+    <aside className="grid h-full grid-rows-[auto_auto_auto_1fr] overflow-hidden border-l border-[var(--hairline-soft)] bg-[#f9fffd]" aria-label="两个人的待办">
+      <div className="flex items-center gap-3 border-b border-[var(--hairline-soft)] bg-white px-5 py-4">
+        <div className="flex -space-x-2" aria-hidden="true">
+          <span className="grid h-10 w-10 place-items-center rounded-lg border-2 border-white bg-[var(--brand-gradient)] text-sm font-extrabold text-white">{selfLabel}</span>
+          <span className="grid h-10 w-10 place-items-center rounded-lg border-2 border-white bg-[var(--love-gradient)] text-sm font-extrabold text-white shadow-[0_8px_18px_var(--bubble-shadow)]">{contactLabel}</span>
         </div>
-        <div className="planner-drawer-title">
-          <h2>一起计划</h2>
-          <p>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-lg font-extrabold leading-tight">一起计划</h2>
+          <p className={cls(ui.mutedText, 'mt-1 leading-5')}>
             共 {tasks.length} 个，已完成 {completedCount} 个，未完成 {activeCount} 个，其中 {pendingConfirmCount} 个待确认
           </p>
         </div>
         {onClose && (
-          <button type="button" className="planner-close-button" onClick={onClose} aria-label="收回待办">
+          <Button type="button" variant="ghost" className="px-3" onClick={onClose} aria-label="收回待办">
             收回
-          </button>
+          </Button>
         )}
       </div>
 
-      <div className="planner-drawer-controls">
-        <button type="button" className="planner-add-toggle" onClick={() => setFormOpen((open) => !open)}>
+      <div className="grid gap-3 border-b border-[var(--hairline-soft)] px-5 py-4">
+        <Button type="button" variant="primary" className="w-full" onClick={() => setFormOpen((open) => !open)}>
           {formOpen ? '收起添加' : '+ 添加计划'}
-        </button>
+        </Button>
         {formOpen && (
-          <form className="planner-drawer-form" onSubmit={submitTask}>
+          <form className="grid gap-2" onSubmit={submitTask}>
             <input
+              className={ui.input}
               value={draft.time}
               onChange={(event) => setDraft({ ...draft, time: event.target.value })}
               placeholder="时间"
             />
             <input
+              className={ui.input}
               value={draft.place}
               onChange={(event) => setDraft({ ...draft, place: event.target.value })}
               placeholder="地点"
             />
             <input
-              className="planner-drawer-plan"
+              className={ui.input}
               value={draft.plan}
               onChange={(event) => setDraft({ ...draft, plan: event.target.value })}
               placeholder="写下要一起做的事"
             />
-            <button type="submit">添加</button>
+            <Button type="submit" variant="primary">添加</Button>
           </form>
         )}
       </div>
 
-      <div className="planner-filter-tabs" aria-label="待办筛选">
-        <button type="button" className={filter === 'active' ? 'active' : ''} onClick={() => setFilter('active')}>
-          未完成
-        </button>
-        <button type="button" className={filter === 'pending' ? 'active' : ''} onClick={() => setFilter('pending')}>
-          待确认
-        </button>
-        <button type="button" className={filter === 'confirmed' ? 'active' : ''} onClick={() => setFilter('confirmed')}>
-          已确认
-        </button>
-        <button type="button" className={filter === 'done' ? 'active' : ''} onClick={() => setFilter('done')}>
-          已完成
-        </button>
-      </div>
+      <SegmentedControl
+        ariaLabel="待办筛选"
+        className="mx-5 my-4"
+        value={filter}
+        onChange={setFilter}
+        options={[
+          { value: 'active', label: '未完成' },
+          { value: 'pending', label: '待确认' },
+          { value: 'confirmed', label: '已确认' },
+          { value: 'done', label: '已完成' }
+        ]}
+      />
 
-      <div className="planner-drawer-list">
+      <div className="grid content-start gap-3 overflow-y-auto px-5 pb-5">
         {visibleTasks.map((task) => {
           const confirmed = task.confirmedByA && task.confirmedByB;
           const expanded = expandedTaskId === task.id;
           return (
-            <article className={`planner-mini-task ${task.done ? 'done' : ''}`} key={task.id}>
-              <div className="planner-mini-main">
+            <article className={cls('rounded-lg border border-[var(--hairline-soft)] bg-white p-3 shadow-[var(--shadow-tight)]', task.done && 'opacity-65')} key={task.id}>
+              <div className="grid grid-cols-[auto_1fr] gap-3">
                 <input
+                  className="mt-1 h-4 w-4 accent-[var(--accent)]"
                   type="checkbox"
                   checked={task.done}
                   onChange={(event) => onUpdateTask(task.id, { done: event.target.checked })}
                   aria-label={task.done ? '标记未完成' : '标记完成'}
                 />
-                <button type="button" onClick={() => setExpandedTaskId(expanded ? null : task.id)}>
-                  <strong>{task.plan || '未填写计划'}</strong>
-                  <em>
+                <button type="button" className="min-w-0 text-left" onClick={() => setExpandedTaskId(expanded ? null : task.id)}>
+                  <strong className={cls('block truncate text-sm font-extrabold', task.done && 'line-through')}>{task.plan || '未填写计划'}</strong>
+                  <em className="mt-1 block truncate text-xs not-italic text-[var(--ink-subtle)]">
                     {task.time || '未填写时间'} · {task.place || '未填写地点'} · {confirmed ? '双方已确认' : '待确认'}
                   </em>
                 </button>
               </div>
 
               {expanded && (
-                <div className="planner-mini-actions" aria-label="双方确认">
-                  <button
+                <div className="mt-3 grid grid-cols-3 gap-2" aria-label="双方确认">
+                  <Button
                     type="button"
-                    className={task.confirmedByA ? 'active' : ''}
+                    variant={task.confirmedByA ? 'primary' : 'subtle'}
+                    className="px-2"
                     onClick={() => onUpdateTask(task.id, { confirmedByA: !task.confirmedByA })}
                   >
                     你确认
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
-                    className={task.confirmedByB ? 'active' : ''}
+                    variant={task.confirmedByB ? 'primary' : 'subtle'}
+                    className="px-2"
                     disabled
                   >
                     Ta 确认
-                  </button>
-                  <button type="button" className="planner-delete-button" onClick={() => onDeleteTask(task.id)}>
+                  </Button>
+                  <Button type="button" variant="danger" className="px-2" onClick={() => onDeleteTask(task.id)}>
                     删除
-                  </button>
+                  </Button>
                 </div>
               )}
             </article>
           );
         })}
         {visibleTasks.length === 0 && (
-          <div className="planner-drawer-empty">
+          <div className="rounded-lg border border-dashed border-[var(--hairline-soft)] bg-white px-4 py-8 text-center text-sm text-[var(--ink-subtle)]">
             {tasks.length === 0 ? '还没有计划。' : '当前筛选下没有计划。'}
           </div>
         )}
@@ -412,60 +477,55 @@ function AuthPanel({ onLogin }) {
   }
 
   return (
-    <main className="auth-shell">
-      <section className="auth-panel">
-        <div className="brand-block">
-          <img className="brand-mark" src="/logo.jpg" alt="" />
+    <main className={cls(ui.shell, 'grid place-items-center p-6')}>
+      <section className={cls(ui.panel, 'w-full max-w-[420px] p-7')}>
+        <div className="flex items-center gap-3.5">
+          <img className="h-12 w-12 rounded-lg object-cover" src="/logo.jpg" alt="" />
           <div>
-            <h1>doolulu</h1>
-            <p>多人联系人私聊</p>
+            <h1 className="text-[26px] font-extrabold leading-none">doolulu</h1>
+            <p className={cls(ui.mutedText, 'mt-1')}>多人联系人私聊</p>
           </div>
         </div>
 
-        <div className="mode-tabs" role="tablist">
-          <button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>
-            登录
-          </button>
-          <button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>
-            注册
-          </button>
-        </div>
+        <SegmentedControl
+          className="my-7"
+          value={mode}
+          onChange={setMode}
+          options={[
+            { value: 'login', label: '登录' },
+            { value: 'register', label: '注册' }
+          ]}
+        />
 
-        <form onSubmit={submit} className="auth-form">
-          <label>
-            用户名
-            <input
-              value={form.username}
-              onChange={(event) => setForm({ ...form, username: event.target.value })}
-              placeholder="alice"
-              autoComplete="username"
-            />
-          </label>
+        <form onSubmit={submit} className="grid gap-3">
+          <TextField
+            label="用户名"
+            value={form.username}
+            onChange={(event) => setForm({ ...form, username: event.target.value })}
+            placeholder="alice"
+            autoComplete="username"
+          />
           {mode === 'register' && (
-            <label>
-              昵称
-              <input
-                value={form.displayName}
-                onChange={(event) => setForm({ ...form, displayName: event.target.value })}
-                placeholder="Alice"
-                autoComplete="name"
-              />
-            </label>
-          )}
-          <label>
-            密码
-            <input
-              type="password"
-              value={form.password}
-              onChange={(event) => setForm({ ...form, password: event.target.value })}
-              placeholder="至少 6 位"
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            <TextField
+              label="昵称"
+              value={form.displayName}
+              onChange={(event) => setForm({ ...form, displayName: event.target.value })}
+              placeholder="Alice"
+              autoComplete="name"
             />
-          </label>
-          {error && <div className="error-line">{error}</div>}
-          <button className="primary-button" disabled={busy}>
+          )}
+          <TextField
+            label="密码"
+            type="password"
+            value={form.password}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+            placeholder="至少 6 位"
+            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+          />
+          {error && <div className={ui.noticeError}>{error}</div>}
+          <Button type="submit" variant="primary" className="min-h-11 w-full" disabled={busy}>
             {busy ? '处理中...' : mode === 'login' ? '登录' : '注册并登录'}
-          </button>
+          </Button>
         </form>
       </section>
     </main>

@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 :root {
   --canvas: #f5f1ec;
   --canvas-soft: #eef8f7;
