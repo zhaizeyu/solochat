@@ -39,15 +39,17 @@ if [[ ! -d node_modules ]]; then
   exit 1
 fi
 
-nohup setsid npm run dev >>"$LOG_FILE" 2>&1 &
+echo "Building app..."
+npm run build >>"$LOG_FILE" 2>&1
+
+nohup setsid npm start >>"$LOG_FILE" 2>&1 &
 PID="$!"
 echo "$PID" >"$PID_FILE"
 
 sleep 1
 if kill -0 "$PID" 2>/dev/null; then
   echo "App started. PID: $PID"
-  echo "Frontend: http://localhost:5173"
-  echo "API: http://localhost:3101"
+  echo "App: http://localhost:${PORT:-3101}"
   echo "Log: $LOG_FILE"
 else
   rm -f "$PID_FILE"

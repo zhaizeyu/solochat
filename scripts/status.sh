@@ -9,8 +9,7 @@ if [[ -f "$PID_FILE" ]]; then
   PID="$(cat "$PID_FILE")"
   if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
     echo "App is running. PID: $PID"
-    echo "Frontend: http://localhost:5173"
-    echo "API: http://localhost:3101"
+    echo "App: http://localhost:${PORT:-3101}"
     echo "Log: $LOG_FILE"
     exit 0
   fi

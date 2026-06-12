@@ -1,9 +1,6 @@
 import { spawn } from 'node:child_process';
 
-const children = [
-  spawn('node', ['server/server.js'], { stdio: 'inherit' }),
-  spawn('npx', ['vite', '--host', '0.0.0.0'], { stdio: 'inherit' })
-];
+const children = [spawn('node', ['server/server.js'], { stdio: 'inherit' })];
 
 function shutdown(signal) {
   for (const child of children) {

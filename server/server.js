@@ -1,4 +1,5 @@
 import http from 'node:http';
+import next from 'next';
 import { port } from './config.js';
 import { getAuthUser, openDb } from './db.js';
 import { json } from './http-utils.js';
@@ -9,6 +10,10 @@ import { handleMessages } from './routes/messages.js';
 import { handlePlanner } from './routes/planner.js';
 import { handleStickers } from './routes/stickers.js';
 import { serveUpload } from './uploads.js';
+
+const dev = process.env.NODE_ENV !== 'production';
+const app = next({ dev });
+const handleNext = app.getRequestHandler();
 
 async function handleApi(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -34,6 +39,9 @@ async function handleApi(req, res) {
   return json(res, 404, { message: '接口不存在' });
 }
 
+await openDb();
+await app.prepare();
+
 const server = http.createServer(async (req, res) => {
   try {
     if (req.url?.startsWith('/uploads/')) {
@@ -44,13 +52,12 @@ const server = http.createServer(async (req, res) => {
       await handleApi(req, res);
       return;
     }
-    json(res, 404, { message: '仅提供 API 服务，请通过 Vite 打开前端' });
+    await handleNext(req, res);
   } catch (error) {
     json(res, 500, { message: error.message || '服务器错误' });
   }
 });
 
-await openDb();
 server.listen(port, () => {
-  console.log(`API server listening on http://localhost:${port}`);
+  console.log(`Next.js app listening on http://localhost:${port}`);
 });

@@ -1,6 +1,11 @@
+'use client';
+
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { createRoot } from 'react-dom/client';
-import './styles.css';
+import { Button as ShadcnButton } from '../components/ui/button.jsx';
+import { Input } from '../components/ui/input.jsx';
+import { Label } from '../components/ui/label.jsx';
+import { TabsList, TabsTrigger } from '../components/ui/tabs.jsx';
+import { Textarea } from '../components/ui/textarea.jsx';
 
 const bubblePresets = [
   { id: 'mint', name: '蓝绿色', start: '#1597ff', end: '#12b886', soft: '#eaf8f5', shadow: 'rgba(18, 184, 134, 0.18)' },
@@ -42,60 +47,46 @@ function cls(...items) {
 }
 
 const ui = {
-  shell: 'min-h-screen bg-[var(--canvas)] text-[var(--ink)]',
-  panel: 'rounded-lg border border-[var(--hairline)] bg-white shadow-[var(--shadow-soft)]',
-  mutedText: 'text-sm text-[var(--ink-muted)]',
-  input: 'h-11 w-full rounded-lg border border-[var(--hairline)] bg-white px-3 text-[var(--ink)] outline-none transition focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--focus)] disabled:cursor-not-allowed disabled:opacity-60',
-  button: 'inline-flex min-h-10 items-center justify-center rounded-lg px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60',
-  primaryButton: 'bg-[var(--brand-gradient)] text-white shadow-[0_10px_24px_rgba(18,184,134,0.18)] hover:brightness-105',
-  subtleButton: 'border border-[var(--hairline)] bg-white text-[var(--ink-muted)] hover:border-[var(--accent)] hover:text-[var(--ink)]',
-  dangerButton: 'border border-[#f1c5bd] bg-[#fff4f2] text-[var(--danger)] hover:bg-white',
-  fieldLabel: 'grid gap-2 text-sm font-bold text-[var(--ink-muted)]',
-  noticeError: 'rounded-lg border border-[#f1c5bd] bg-[#fff4f2] px-3 py-2 text-sm text-[var(--danger)]'
+  shell: 'min-h-screen bg-[var(--canvas)] text-[var(--foreground)]',
+  panel: 'rounded-lg border border-[var(--border)] bg-[var(--card)] text-[var(--card-foreground)] shadow-[var(--shadow-soft)]',
+  mutedText: 'text-sm text-[var(--muted-foreground)]',
+  input: 'h-10',
+  noticeError: 'rounded-md border border-[var(--destructive-border)] bg-[var(--destructive-muted)] px-3 py-2 text-sm text-[var(--destructive)]'
 };
 
 function TextField({ label, className = '', ...props }) {
   return (
-    <label className={ui.fieldLabel}>
+    <Label>
       {label}
-      <input className={cls(ui.input, className)} {...props} />
-    </label>
+      <Input className={cls(ui.input, className)} {...props} />
+    </Label>
   );
 }
 
 function Button({ variant = 'subtle', className = '', ...props }) {
   const variants = {
-    primary: ui.primaryButton,
-    subtle: ui.subtleButton,
-    danger: ui.dangerButton,
-    ghost: 'bg-transparent text-[var(--ink-muted)] hover:bg-[var(--surface-muted)] hover:text-[var(--ink)]'
+    primary: 'default',
+    subtle: 'outline',
+    danger: 'destructive',
+    ghost: 'ghost'
   };
-  return <button className={cls(ui.button, variants[variant], className)} {...props} />;
+  return <ShadcnButton variant={variants[variant] || variant} className={className} {...props} />;
 }
 
 function SegmentedControl({ options, value, onChange, className = '', ariaLabel }) {
   return (
-    <div
-      className={cls('grid gap-1 rounded-lg bg-[var(--surface-muted)] p-1', className)}
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
-      role="tablist"
-      aria-label={ariaLabel}
-    >
+    <TabsList columns={options.length} className={cls('grid w-full gap-1', className)} aria-label={ariaLabel}>
       {options.map((option) => (
-        <button
+        <TabsTrigger
           key={option.value}
-          type="button"
-          className={cls(
-            'min-h-9 rounded-md px-3 text-sm font-bold text-[var(--ink-muted)] transition',
-            value === option.value && 'bg-white text-[var(--ink)] shadow-[0_1px_5px_rgba(17,17,17,0.10)]'
-          )}
+          active={value === option.value}
           onClick={() => onChange(option.value)}
           aria-pressed={value === option.value}
         >
           {option.label}
-        </button>
+        </TabsTrigger>
       ))}
-    </div>
+    </TabsList>
   );
 }
 
@@ -162,33 +153,32 @@ function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onA
   });
 
   return (
-    <aside className="grid h-full grid-rows-[auto_auto_auto_1fr] overflow-hidden border-l border-[var(--hairline-soft)] bg-[#f9fffd]" aria-label="两个人的待办">
-      <div className="flex items-center gap-3 border-b border-[var(--hairline-soft)] bg-white px-5 py-4">
-        <div className="flex -space-x-2" aria-hidden="true">
-          <span className="grid h-10 w-10 place-items-center rounded-lg border-2 border-white bg-[var(--brand-gradient)] text-sm font-extrabold text-white">{selfLabel}</span>
-          <span className="grid h-10 w-10 place-items-center rounded-lg border-2 border-white bg-[var(--love-gradient)] text-sm font-extrabold text-white shadow-[0_8px_18px_var(--bubble-shadow)]">{contactLabel}</span>
+    <aside className="planner-drawer" aria-label="两个人的待办">
+      <div className="planner-drawer-header">
+        <div className="planner-avatar-pair" aria-hidden="true">
+          <span>{selfLabel}</span>
+          <span>{contactLabel}</span>
         </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-lg font-extrabold leading-tight">一起计划</h2>
-          <p className={cls(ui.mutedText, 'mt-1 leading-5')}>
+        <div className="planner-drawer-title">
+          <h2>一起计划</h2>
+          <p>
             共 {tasks.length} 个，已完成 {completedCount} 个，未完成 {activeCount} 个，其中 {pendingConfirmCount} 个待确认
           </p>
         </div>
         {onClose && (
-          <Button type="button" variant="ghost" className="px-3" onClick={onClose} aria-label="收回待办">
+          <button type="button" className="planner-close-button" onClick={onClose} aria-label="收回待办">
             收回
-          </Button>
+          </button>
         )}
       </div>
 
-      <div className="grid gap-3 border-b border-[var(--hairline-soft)] px-5 py-4">
-        <Button type="button" variant="primary" className="w-full" onClick={() => setFormOpen((open) => !open)}>
+      <div className="planner-drawer-controls">
+        <button type="button" className="planner-add-toggle" onClick={() => setFormOpen((open) => !open)}>
           {formOpen ? '收起添加' : '+ 添加计划'}
-        </Button>
+        </button>
         {formOpen && (
-          <form className="grid gap-2" onSubmit={submitTask}>
+          <form className="planner-drawer-form" onSubmit={submitTask}>
             <input
-              className={ui.input}
               value={draft.time}
               onChange={(event) => setDraft({ ...draft, time: event.target.value })}
               placeholder="时间"
@@ -200,79 +190,82 @@ function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onA
               placeholder="地点"
             />
             <input
-              className={ui.input}
+              className="planner-drawer-plan"
               value={draft.plan}
               onChange={(event) => setDraft({ ...draft, plan: event.target.value })}
               placeholder="写下要一起做的事"
             />
-            <Button type="submit" variant="primary">添加</Button>
+            <button type="submit">添加</button>
           </form>
         )}
       </div>
 
-      <SegmentedControl
-        ariaLabel="待办筛选"
-        className="mx-5 my-4"
-        value={filter}
-        onChange={setFilter}
-        options={[
+      <div className="planner-filter-tabs" aria-label="待办筛选">
+        {[
           { value: 'active', label: '未完成' },
           { value: 'pending', label: '待确认' },
           { value: 'confirmed', label: '已确认' },
           { value: 'done', label: '已完成' }
-        ]}
-      />
+        ].map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={filter === option.value ? 'active' : ''}
+            onClick={() => setFilter(option.value)}
+            aria-pressed={filter === option.value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
 
-      <div className="grid content-start gap-3 overflow-y-auto px-5 pb-5">
+      <div className="planner-drawer-list">
         {visibleTasks.map((task) => {
           const confirmed = task.confirmedByA && task.confirmedByB;
           const expanded = expandedTaskId === task.id;
           return (
-            <article className={cls('rounded-lg border border-[var(--hairline-soft)] bg-white p-3 shadow-[var(--shadow-tight)]', task.done && 'opacity-65')} key={task.id}>
-              <div className="grid grid-cols-[auto_1fr] gap-3">
+            <article className={cls('planner-mini-task', task.done && 'done')} key={task.id}>
+              <div className="planner-mini-main">
                 <input
-                  className="mt-1 h-4 w-4 accent-[var(--accent)]"
                   type="checkbox"
                   checked={task.done}
                   onChange={(event) => onUpdateTask(task.id, { done: event.target.checked })}
                   aria-label={task.done ? '标记未完成' : '标记完成'}
                 />
-                <button type="button" className="min-w-0 text-left" onClick={() => setExpandedTaskId(expanded ? null : task.id)}>
-                  <strong className={cls('block truncate text-sm font-extrabold', task.done && 'line-through')}>{task.plan || '未填写计划'}</strong>
-                  <em className="mt-1 block truncate text-xs not-italic text-[var(--ink-subtle)]">
+                <button type="button" onClick={() => setExpandedTaskId(expanded ? null : task.id)}>
+                  <strong>{task.plan || '未填写计划'}</strong>
+                  <em>
                     {task.time || '未填写时间'} · {task.place || '未填写地点'} · {confirmed ? '双方已确认' : '待确认'}
                   </em>
                 </button>
               </div>
 
               {expanded && (
-                <div className="mt-3 grid grid-cols-3 gap-2" aria-label="双方确认">
-                  <Button
+                <div className="planner-mini-actions" aria-label="双方确认">
+                  <button
                     type="button"
-                    variant={task.confirmedByA ? 'primary' : 'subtle'}
-                    className="px-2"
+                    className={task.confirmedByA ? 'active' : ''}
                     onClick={() => onUpdateTask(task.id, { confirmedByA: !task.confirmedByA })}
                   >
                     你确认
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     type="button"
-                    variant={task.confirmedByB ? 'primary' : 'subtle'}
-                    className="px-2"
+                    className={task.confirmedByB ? 'active' : ''}
                     disabled
                   >
                     Ta 确认
-                  </Button>
-                  <Button type="button" variant="danger" className="px-2" onClick={() => onDeleteTask(task.id)}>
+                  </button>
+                  <button type="button" className="planner-delete-button" onClick={() => onDeleteTask(task.id)}>
                     删除
-                  </Button>
+                  </button>
                 </div>
               )}
             </article>
           );
         })}
         {visibleTasks.length === 0 && (
-          <div className="rounded-lg border border-dashed border-[var(--hairline-soft)] bg-white px-4 py-8 text-center text-sm text-[var(--ink-subtle)]">
+          <div className="planner-drawer-empty">
             {tasks.length === 0 ? '还没有计划。' : '当前筛选下没有计划。'}
           </div>
         )}
@@ -647,7 +640,7 @@ function ContactList({
         <div className="profile-copy">
           {editingName ? (
             <form className="profile-edit" onSubmit={saveProfile}>
-              <input
+              <Input
                 value={displayName}
                 onChange={(event) => setDisplayName(event.target.value)}
                 maxLength={24}
@@ -734,12 +727,12 @@ function ContactList({
       </section>
 
       <form className="add-contact" onSubmit={add}>
-        <input
+        <Input
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           placeholder="输入用户名添加联系人"
         />
-        <button title="添加联系人" disabled={busy}>+</button>
+        <Button title="添加联系人" disabled={busy} className="h-10 px-0">+</Button>
       </form>
       {error && <div className="inline-error">{error}</div>}
 
@@ -1257,48 +1250,50 @@ function ChatWindow({
                 <button type="button" onClick={() => setQuote(null)}>取消引用</button>
               </div>
             )}
-            <textarea
-              ref={textareaRef}
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              placeholder={`发送给 ${contact.displayName}`}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' && event.ctrlKey) {
-                  insertLineBreak(event);
-                  return;
-                }
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  submit(event);
-                }
-              }}
-            />
-            <div className="sticker-toolbar">
-              <button
-                type="button"
-                className={emojiOpen ? 'active' : ''}
-                onClick={() => {
-                  setEmojiOpen((open) => !open);
-                  setStickerOpen(false);
+            <div className="composer-input-box">
+              <Textarea
+                ref={textareaRef}
+                value={text}
+                onChange={(event) => setText(event.target.value)}
+                placeholder={`发送给 ${contact.displayName}`}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && event.ctrlKey) {
+                    insertLineBreak(event);
+                    return;
+                  }
+                  if (event.key === 'Enter') {
+                    event.preventDefault();
+                    submit(event);
+                  }
                 }}
-                title="Emoji"
-              >
-                <Twemoji emoji="😀" className="toolbar-icon" />
-              </button>
-              <button
-                type="button"
-                className={stickerOpen ? 'active' : ''}
-                onClick={() => {
-                  setStickerOpen((open) => !open);
-                  setEmojiOpen(false);
-                }}
-                title="表情包"
-              >
-                <Twemoji emoji="❤️" className="toolbar-icon" />
-              </button>
+              />
+              <div className="sticker-toolbar">
+                <button
+                  type="button"
+                  className={emojiOpen ? 'active' : ''}
+                  onClick={() => {
+                    setEmojiOpen((open) => !open);
+                    setStickerOpen(false);
+                  }}
+                  title="Emoji"
+                >
+                  <Twemoji emoji="😀" className="toolbar-icon" />
+                </button>
+                <button
+                  type="button"
+                  className={stickerOpen ? 'active' : ''}
+                  onClick={() => {
+                    setStickerOpen((open) => !open);
+                    setEmojiOpen(false);
+                  }}
+                  title="表情包"
+                >
+                  <Twemoji emoji="❤️" className="toolbar-icon" />
+                </button>
+              </div>
             </div>
           </div>
-          <button className="send-button" title="发送消息">发送</button>
+          <Button type="submit" variant="primary" className="send-button" title="发送消息">发送</Button>
           {emojiOpen && (
             <div className="emoji-panel">
               {emojiGroups.map((group) => (
@@ -1471,7 +1466,7 @@ function AdminPanel({ self, onLogout }) {
                     <span>表情 {target.stickerCount}</span>
                   </div>
                   <div className="admin-user-controls">
-                    <input
+                    <Input
                       type="password"
                       value={passwords[target.id] || ''}
                       onChange={(event) => setPasswords({ ...passwords, [target.id]: event.target.value })}
@@ -1500,7 +1495,7 @@ function AdminPanel({ self, onLogout }) {
   );
 }
 
-function App() {
+export default function App() {
   const [user, setUser] = useState(null);
   const [contacts, setContacts] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -1509,12 +1504,12 @@ function App() {
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [stickers, setStickers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pageVisible, setPageVisible] = useState(() => !document.hidden);
+  const [pageVisible, setPageVisible] = useState(true);
   const selectedId = selected?.id;
   const messagesRef = useRef([]);
   const loadingOlderMessagesRef = useRef(false);
   const hasOlderMessagesRef = useRef(false);
-  const originalTitleRef = useRef(document.title);
+  const originalTitleRef = useRef('doolulu');
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -1650,6 +1645,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    originalTitleRef.current = document.title;
     function updateVisibility() {
       const visible = !document.hidden;
       setPageVisible(visible);
@@ -1805,5 +1801,3 @@ function App() {
     </main>
   );
 }
-
-createRoot(document.getElementById('root')).render(<App />);

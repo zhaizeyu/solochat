@@ -17,6 +17,30 @@
   --success: #0f8f54;
   --danger: #c41c1c;
   --focus: rgba(18, 184, 134, 0.18);
+  --background: var(--surface);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-hover: #0ca678;
+  --primary-foreground: #ffffff;
+  --secondary: var(--surface-muted);
+  --secondary-hover: #cfebe8;
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface-muted);
+  --muted-foreground: var(--ink-muted);
+  --accent-muted: var(--accent-soft);
+  --destructive: var(--danger);
+  --destructive-hover: #a91515;
+  --destructive-foreground: #ffffff;
+  --destructive-muted: #fff4f2;
+  --destructive-border: #f1c5bd;
+  --border: var(--hairline);
+  --input: var(--hairline);
+  --ring: var(--accent);
+  --ring-soft: var(--focus);
   --bubble-start: #1597ff;
   --bubble-end: #12b886;
   --bubble-soft: #eaf8f5;
@@ -872,10 +896,43 @@ textarea:focus {
   min-width: 0;
 }
 
-.composer textarea {
+.composer-input-box {
+  min-width: 0;
   min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 8px 20px rgba(17, 17, 17, 0.04);
+  padding: 8px;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.composer-input-box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus), 0 8px 20px rgba(17, 17, 17, 0.04);
+}
+
+.composer-input-box textarea {
+  min-height: 40px;
   max-height: 150px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   line-height: 1.45;
+  padding: 9px 4px;
+  resize: none;
+}
+
+.composer-input-box textarea:focus,
+.composer-input-box textarea:focus-visible {
+  border-color: transparent;
+  box-shadow: none;
+  outline: 0;
 }
 
 .composer-quote {
@@ -904,6 +961,8 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 8px;
+  padding-bottom: 3px;
+  white-space: nowrap;
 }
 
 .sticker-toolbar button {
@@ -1115,7 +1174,10 @@ textarea:focus {
 }
 
 .send-button {
+  align-self: end;
   min-height: 58px;
+  height: 58px;
+  padding: 0;
 }
 
 .chat-desktop-planner {
@@ -1672,8 +1734,34 @@ textarea:focus {
   }
 
   .composer {
-    grid-template-columns: 1fr 70px;
+    grid-template-columns: minmax(0, 1fr) 66px;
     padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  }
+
+  .composer-input-box {
+    min-height: 54px;
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .composer-input-box textarea {
+    min-height: 38px;
+    padding: 8px 2px;
+  }
+
+  .sticker-toolbar {
+    gap: 4px;
+    padding-bottom: 2px;
+  }
+
+  .sticker-toolbar button {
+    width: 30px;
+    height: 30px;
+  }
+
+  .send-button {
+    min-height: 54px;
+    height: 54px;
   }
 
   .sticker-panel {
