@@ -1511,6 +1511,12 @@ function App() {
     const data = await api.messages(contactId, { after: newest.createdAt, limit: messagePageSize });
     if (data.messages.length > 0) {
       setMessages((items) => mergeMessages(items, data.messages));
+      return;
+    }
+
+    const latest = await api.messages(contactId, { limit: Math.min(Math.max(current.length, messagePageSize), 100) });
+    if (latest.messages.length > 0) {
+      setMessages((items) => mergeMessages(items, latest.messages));
     }
   }
 
