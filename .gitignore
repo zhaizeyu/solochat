@@ -3,7 +3,6 @@ node_modules/
 dist/
 .runtime/
 logs/
-data/app.sqlite
-data/app.sqlite-shm
-data/app.sqlite-wal
-data/uploads/
+.env
+data/
+public/xhs-promo/

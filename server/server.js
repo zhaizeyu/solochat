@@ -1,6 +1,6 @@
 import http from 'node:http';
 import next from 'next';
-import { port } from './config.js';
+import { assertRuntimeConfig, port } from './config.js';
 import { getAuthUser, openDb } from './db.js';
 import { json } from './http-utils.js';
 import { handleAdmin } from './routes/admin.js';
@@ -9,7 +9,6 @@ import { handleContacts } from './routes/contacts.js';
 import { handleMessages } from './routes/messages.js';
 import { handlePlanner } from './routes/planner.js';
 import { handleStickers } from './routes/stickers.js';
-import { serveUpload } from './uploads.js';
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
@@ -21,7 +20,7 @@ async function handleApi(req, res) {
 
   if (await handlePublicAuth(req, res, pathName)) return;
 
-  const user = getAuthUser(req);
+  const user = await getAuthUser(req);
   if (!user) {
     return json(res, 401, { message: '请先登录' });
   }
@@ -39,15 +38,12 @@ async function handleApi(req, res) {
   return json(res, 404, { message: '接口不存在' });
 }
 
+assertRuntimeConfig();
 await openDb();
 await app.prepare();
 
 const server = http.createServer(async (req, res) => {
   try {
-    if (req.url?.startsWith('/uploads/')) {
-      await serveUpload(req, res);
-      return;
-    }
     if (req.url?.startsWith('/api/')) {
       await handleApi(req, res);
       return;

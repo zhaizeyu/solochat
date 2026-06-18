@@ -628,7 +628,7 @@ textarea:focus {
   overflow: auto;
   min-height: 0;
   overscroll-behavior: contain;
-  padding: 24px max(24px, calc((100% - 920px) / 2));
+  padding: 24px clamp(18px, 2.4vw, 40px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -882,7 +882,7 @@ textarea:focus {
   grid-template-columns: minmax(0, 1fr) 88px;
   gap: 10px 12px;
   align-items: end;
-  padding: 12px max(24px, calc((100% - 920px) / 2)) 18px;
+  padding: 12px clamp(18px, 2.4vw, 40px) 18px;
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.88)),
     var(--surface);

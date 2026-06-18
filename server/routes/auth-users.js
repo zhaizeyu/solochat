@@ -27,7 +27,7 @@ export async function handlePublicAuth(req, res, pathName) {
     if (password.length < 6) {
       return json(res, 400, { message: '密码至少 6 位' });
     }
-    if (findActiveUserByUsername(username)) {
+    if (await findActiveUserByUsername(username)) {
       return json(res, 409, { message: '用户名已存在' });
     }
 
@@ -43,7 +43,7 @@ export async function handlePublicAuth(req, res, pathName) {
       deletedUsername: null,
       isAdmin: false
     };
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO users (
         id, username, display_name, password_hash, avatar_path, bubble_theme,
         created_at, disabled_at, deleted_username, is_admin
@@ -66,12 +66,12 @@ export async function handlePublicAuth(req, res, pathName) {
   if (req.method === 'POST' && pathName === '/api/login') {
     const body = await readBody(req);
     const username = normalizeName(body.username).toLowerCase();
-    const user = findActiveUserByUsername(username);
+    const user = await findActiveUserByUsername(username);
     if (!user || !verifyPassword(String(body.password || ''), user.passwordHash)) {
       return json(res, 401, { message: '用户名或密码错误' });
     }
     const token = crypto.randomBytes(32).toString('hex');
-    db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)')
+    await db.prepare('INSERT INTO sessions (token, user_id, created_at) VALUES (?, ?, ?)')
       .run(token, user.id, new Date().toISOString());
     return json(res, 200, { token, user: sanitizeUser(user) });
   }
@@ -111,15 +111,15 @@ export async function handleCurrentUser(req, res, pathName, user) {
       updates.bubbleTheme = bubbleTheme;
     }
     if (Object.hasOwn(updates, 'displayName')) {
-      db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(updates.displayName, user.id);
+      await db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(updates.displayName, user.id);
     }
     if (Object.hasOwn(updates, 'avatarPath')) {
-      db.prepare('UPDATE users SET avatar_path = ? WHERE id = ?').run(updates.avatarPath, user.id);
+      await db.prepare('UPDATE users SET avatar_path = ? WHERE id = ?').run(updates.avatarPath, user.id);
     }
     if (Object.hasOwn(updates, 'bubbleTheme')) {
-      db.prepare('UPDATE users SET bubble_theme = ? WHERE id = ?').run(updates.bubbleTheme, user.id);
+      await db.prepare('UPDATE users SET bubble_theme = ? WHERE id = ?').run(updates.bubbleTheme, user.id);
     }
-    return json(res, 200, { user: sanitizeUser(getUserById(user.id)) });
+    return json(res, 200, { user: sanitizeUser(await getUserById(user.id)) });
   }
 
   if (req.method === 'DELETE' && pathName === '/api/me') {
@@ -129,14 +129,14 @@ export async function handleCurrentUser(req, res, pathName, user) {
     const now = new Date().toISOString();
     const updated = { ...user, disabledAt: now, displayName: `${user.displayName}（已注销）` };
     releaseDeletedUsername(updated);
-    execTransaction(() => {
-      db.prepare(`
+    await execTransaction(async () => {
+      await db.prepare(`
         UPDATE users
         SET username = ?, display_name = ?, disabled_at = ?, deleted_username = ?
         WHERE id = ?
       `).run(updated.username, updated.displayName, updated.disabledAt, updated.deletedUsername, updated.id);
-      db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(user.id, user.id);
-      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+      await db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(user.id, user.id);
+      await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
     });
     return json(res, 200, { ok: true });
   }

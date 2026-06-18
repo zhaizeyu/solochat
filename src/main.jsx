@@ -16,7 +16,6 @@ const bubblePresets = [
   { id: 'lavender', name: '薰衣草', start: '#a18cd1', end: '#fbc2eb', soft: '#f8f0ff', shadow: 'rgba(161, 140, 209, 0.2)' }
 ];
 
-const TWEMOJI_BASE_URL = '/twemoji';
 const emojiMatcher = /(?:[\u{1F1E6}-\u{1F1FF}]{2}|[#*0-9]\uFE0F?\u20E3|\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?)*)/gu;
 const emojiGroups = [
   {
@@ -90,34 +89,11 @@ function SegmentedControl({ options, value, onChange, className = '', ariaLabel 
   );
 }
 
-function emojiToCodePoint(emoji) {
-  return Array.from(emoji)
-    .map((char) => char.codePointAt(0).toString(16))
-    .filter((code) => code !== 'fe0f')
-    .join('-');
-}
-
-function twemojiSrc(emoji) {
-  return `${TWEMOJI_BASE_URL}/${emojiToCodePoint(emoji)}.svg`;
-}
-
 function Twemoji({ emoji, className = 'twemoji' }) {
-  const [loaded, setLoaded] = useState(true);
-  if (!loaded) {
-    return (
-      <span className={`${className} emoji-fallback`} role="img" aria-label={emoji}>
-        {emoji}
-      </span>
-    );
-  }
   return (
-    <img
-      className={className}
-      src={twemojiSrc(emoji)}
-      alt={emoji}
-      draggable="false"
-      onError={() => setLoaded(false)}
-    />
+    <span className={`${className} emoji-fallback`} role="img" aria-label={emoji}>
+      {emoji}
+    </span>
   );
 }
 
@@ -470,55 +446,69 @@ function AuthPanel({ onLogin }) {
   }
 
   return (
-    <main className={cls(ui.shell, 'grid place-items-center p-6')}>
-      <section className={cls(ui.panel, 'w-full max-w-[420px] p-7')}>
-        <div className="flex items-center gap-3.5">
-          <img className="h-12 w-12 rounded-lg object-cover" src="/logo.jpg" alt="" />
+    <main className="auth-shell">
+      <section className="auth-panel">
+        <div className="brand-block">
+          <div className="brand-mark" aria-hidden="true">d</div>
           <div>
-            <h1 className="text-[26px] font-extrabold leading-none">doolulu</h1>
-            <p className={cls(ui.mutedText, 'mt-1')}>多人联系人私聊</p>
+            <h1>doolulu</h1>
+            <p>多人联系人私聊</p>
           </div>
         </div>
 
-        <SegmentedControl
-          className="my-7"
-          value={mode}
-          onChange={setMode}
-          options={[
+        <div className="mode-tabs" role="tablist" aria-label="登录或注册">
+          {[
             { value: 'login', label: '登录' },
             { value: 'register', label: '注册' }
-          ]}
-        />
+          ].map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={mode === option.value ? 'active' : ''}
+              onClick={() => setMode(option.value)}
+              role="tab"
+              aria-selected={mode === option.value}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
 
-        <form onSubmit={submit} className="grid gap-3">
-          <TextField
-            label="用户名"
-            value={form.username}
-            onChange={(event) => setForm({ ...form, username: event.target.value })}
-            placeholder="alice"
-            autoComplete="username"
-          />
-          {mode === 'register' && (
-            <TextField
-              label="昵称"
-              value={form.displayName}
-              onChange={(event) => setForm({ ...form, displayName: event.target.value })}
-              placeholder="Alice"
-              autoComplete="name"
+        <form onSubmit={submit} className="auth-form">
+          <label>
+            用户名
+            <input
+              value={form.username}
+              onChange={(event) => setForm({ ...form, username: event.target.value })}
+              placeholder="alice"
+              autoComplete="username"
             />
+          </label>
+          {mode === 'register' && (
+            <label>
+              昵称
+              <input
+                value={form.displayName}
+                onChange={(event) => setForm({ ...form, displayName: event.target.value })}
+                placeholder="Alice"
+                autoComplete="name"
+              />
+            </label>
           )}
-          <TextField
-            label="密码"
-            type="password"
-            value={form.password}
-            onChange={(event) => setForm({ ...form, password: event.target.value })}
-            placeholder="至少 6 位"
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          />
-          {error && <div className={ui.noticeError}>{error}</div>}
-          <Button type="submit" variant="primary" className="min-h-11 w-full" disabled={busy}>
+          <label>
+            密码
+            <input
+              type="password"
+              value={form.password}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
+              placeholder="至少 6 位"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+            />
+          </label>
+          {error && <div className="error-line">{error}</div>}
+          <button type="submit" className="primary-button" disabled={busy}>
             {busy ? '处理中...' : mode === 'login' ? '登录' : '注册并登录'}
-          </Button>
+          </button>
         </form>
       </section>
     </main>
@@ -1426,7 +1416,7 @@ function AdminPanel({ self, onLogout }) {
     <main className="admin-shell">
       <header className="admin-header">
         <div className="brand-block">
-          <img className="brand-mark" src="/logo.jpg" alt="" />
+          <div className="brand-mark" aria-hidden="true">管</div>
           <div>
             <h1>管理员</h1>
             <p>@{self.username}</p>

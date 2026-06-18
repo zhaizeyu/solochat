@@ -1,13 +1,44 @@
-import { mkdir } from 'node:fs/promises';
-import { DatabaseSync } from 'node:sqlite';
+import { Pool } from 'pg';
 import crypto from 'node:crypto';
-import { adminUsername, dataDir, initialAdminPassword, sqlitePath, bubbleThemes } from './config.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { adminUsername, bubbleThemes, databaseUrl, initialAdminPassword } from './config.js';
 import { conversationKey, hashPassword, parseJson } from './utils.js';
 
-let db;
+let pool;
+const transactionStorage = new AsyncLocalStorage();
+
+function sqlParams(sql) {
+  let index = 0;
+  return sql.replace(/\?/g, () => `$${++index}`);
+}
+
+async function query(sql, params = []) {
+  const client = transactionStorage.getStore() || pool;
+  return client.query(sqlParams(sql), params);
+}
 
 export function getDb() {
-  return db;
+  return {
+    prepare(sql) {
+      return {
+        async all(...params) {
+          const result = await query(sql, params);
+          return result.rows;
+        },
+        async get(...params) {
+          const result = await query(sql, params);
+          return result.rows[0] || null;
+        },
+        async run(...params) {
+          const result = await query(sql, params);
+          return { changes: result.rowCount };
+        }
+      };
+    },
+    async exec(sql) {
+      return query(sql);
+    }
+  };
 }
 
 export function rowToUser(row) {
@@ -78,54 +109,54 @@ export function userSelect(prefix = '') {
   return `
     ${prefix}id AS id,
     ${prefix}username AS username,
-    ${prefix}display_name AS displayName,
-    ${prefix}password_hash AS passwordHash,
-    ${prefix}avatar_path AS avatarPath,
-    ${prefix}bubble_theme AS bubbleTheme,
-    ${prefix}created_at AS createdAt,
-    ${prefix}disabled_at AS disabledAt,
-    ${prefix}deleted_username AS deletedUsername,
-    ${prefix}is_admin AS isAdmin
+    ${prefix}display_name AS "displayName",
+    ${prefix}password_hash AS "passwordHash",
+    ${prefix}avatar_path AS "avatarPath",
+    ${prefix}bubble_theme AS "bubbleTheme",
+    ${prefix}created_at AS "createdAt",
+    ${prefix}disabled_at AS "disabledAt",
+    ${prefix}deleted_username AS "deletedUsername",
+    ${prefix}is_admin AS "isAdmin"
   `;
 }
 
 export function stickerSelect(prefix = '') {
   return `
     ${prefix}id AS id,
-    ${prefix}owner_id AS ownerId,
+    ${prefix}owner_id AS "ownerId",
     ${prefix}name AS name,
-    ${prefix}image_path AS imagePath,
-    ${prefix}created_at AS createdAt
+    ${prefix}image_path AS "imagePath",
+    ${prefix}created_at AS "createdAt"
   `;
 }
 
 export function messageSelect(prefix = '') {
   return `
     ${prefix}id AS id,
-    ${prefix}conversation_id AS conversationId,
-    ${prefix}from_id AS fromId,
-    ${prefix}to_id AS toId,
+    ${prefix}conversation_id AS "conversationId",
+    ${prefix}from_id AS "fromId",
+    ${prefix}to_id AS "toId",
     ${prefix}kind AS kind,
     ${prefix}text AS text,
-    ${prefix}sticker_json AS stickerJson,
-    ${prefix}quote_json AS quoteJson,
-    ${prefix}created_at AS createdAt,
-    ${prefix}read_at AS readAt,
-    ${prefix}recalled_at AS recalledAt
+    ${prefix}sticker_json AS "stickerJson",
+    ${prefix}quote_json AS "quoteJson",
+    ${prefix}created_at AS "createdAt",
+    ${prefix}read_at AS "readAt",
+    ${prefix}recalled_at AS "recalledAt"
   `;
 }
 
 export function plannerTaskSelect(prefix = '') {
   return `
     ${prefix}id AS id,
-    ${prefix}conversation_id AS conversationId,
-    ${prefix}created_by AS createdBy,
-    ${prefix}time_text AS timeText,
-    ${prefix}place_text AS placeText,
-    ${prefix}plan_text AS planText,
-    ${prefix}done_at AS doneAt,
-    ${prefix}created_at AS createdAt,
-    ${prefix}updated_at AS updatedAt
+    ${prefix}conversation_id AS "conversationId",
+    ${prefix}created_by AS "createdBy",
+    ${prefix}time_text AS "timeText",
+    ${prefix}place_text AS "placeText",
+    ${prefix}plan_text AS "planText",
+    ${prefix}done_at AS "doneAt",
+    ${prefix}created_at AS "createdAt",
+    ${prefix}updated_at AS "updatedAt"
   `;
 }
 
@@ -152,23 +183,29 @@ export function sanitizeSticker(sticker) {
   };
 }
 
-export function execTransaction(callback) {
-  db.exec('BEGIN IMMEDIATE');
+export async function execTransaction(callback) {
+  const client = await pool.connect();
   try {
-    const result = callback();
-    db.exec('COMMIT');
-    return result;
+    return await transactionStorage.run(client, async () => {
+      await client.query('BEGIN');
+      try {
+        const result = await callback();
+        await client.query('COMMIT');
+        return result;
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      }
+    });
   } catch (error) {
-    db.exec('ROLLBACK');
     throw error;
+  } finally {
+    client.release();
   }
 }
 
-function createSchema() {
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
-
+async function createSchema() {
+  await query(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
       username TEXT NOT NULL,
@@ -179,7 +216,7 @@ function createSchema() {
       created_at TEXT NOT NULL,
       disabled_at TEXT,
       deleted_username TEXT,
-      is_admin INTEGER NOT NULL DEFAULT 0
+      is_admin BOOLEAN NOT NULL DEFAULT FALSE
     );
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_users_active_username
@@ -273,15 +310,15 @@ export function releaseDeletedUsername(user) {
   return true;
 }
 
-function ensureAdminUser() {
-  const admin = rowToUser(db.prepare(`SELECT ${userSelect()} FROM users WHERE username = ?`).get(adminUsername));
+async function ensureAdminUser() {
+  const admin = rowToUser(await getDb().prepare(`SELECT ${userSelect()} FROM users WHERE username = ?`).get(adminUsername));
   if (admin) {
     if (!admin.isAdmin) {
-      db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(admin.id);
+      await getDb().prepare('UPDATE users SET is_admin = TRUE WHERE id = ?').run(admin.id);
     }
     return;
   }
-  db.prepare(`
+  await getDb().prepare(`
     INSERT INTO users (
       id, username, display_name, password_hash, avatar_path, bubble_theme,
       created_at, disabled_at, deleted_username, is_admin
@@ -296,55 +333,57 @@ function ensureAdminUser() {
     new Date().toISOString(),
     null,
     null,
-    1
+    true
   );
 }
 
-function releaseDeletedUsernames() {
-  const users = db.prepare(`SELECT ${userSelect()} FROM users WHERE disabled_at IS NOT NULL`).all().map(rowToUser);
-  const update = db.prepare('UPDATE users SET username = ?, deleted_username = ? WHERE id = ?');
-  execTransaction(() => {
+async function releaseDeletedUsernames() {
+  const users = (await getDb().prepare(`SELECT ${userSelect()} FROM users WHERE disabled_at IS NOT NULL`).all()).map(rowToUser);
+  await execTransaction(async () => {
+    const update = getDb().prepare('UPDATE users SET username = ?, deleted_username = ? WHERE id = ?');
     for (const user of users) {
       if (releaseDeletedUsername(user)) {
-        update.run(user.username, user.deletedUsername, user.id);
+        await update.run(user.username, user.deletedUsername, user.id);
       }
     }
   });
 }
 
 export async function openDb() {
-  await mkdir(dataDir, { recursive: true });
-  db = new DatabaseSync(sqlitePath);
-  createSchema();
-
-  releaseDeletedUsernames();
-  ensureAdminUser();
+  pool = new Pool({ connectionString: databaseUrl });
+  await createSchema();
+  await releaseDeletedUsernames();
+  await ensureAdminUser();
 }
 
-export function getUserById(id) {
-  return rowToUser(db.prepare(`SELECT ${userSelect()} FROM users WHERE id = ?`).get(id));
+export async function closeDb() {
+  await pool?.end();
 }
 
-export function findActiveUserByUsername(username) {
+export async function getUserById(id) {
+  return rowToUser(await getDb().prepare(`SELECT ${userSelect()} FROM users WHERE id = ?`).get(id));
+}
+
+export async function findActiveUserByUsername(username) {
   return rowToUser(
-    db.prepare(`SELECT ${userSelect()} FROM users WHERE username = ? AND disabled_at IS NULL`).get(username)
+    await getDb().prepare(`SELECT ${userSelect()} FROM users WHERE username = ? AND disabled_at IS NULL`).get(username)
   );
 }
 
-export function getAuthUser(req) {
+export async function getAuthUser(req) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   if (!token) return null;
-  const session = db.prepare('SELECT user_id AS userId FROM sessions WHERE token = ?').get(token);
+  const session = await getDb().prepare('SELECT user_id AS "userId" FROM sessions WHERE token = ?').get(token);
   return session ? getUserById(session.userId) : null;
 }
 
-export function sanitizeAdminUser(user) {
-  const counts = db.prepare(`
+export async function sanitizeAdminUser(user) {
+  const counts = await getDb().prepare(`
     SELECT
-      (SELECT COUNT(*) FROM messages WHERE from_id = ? OR to_id = ?) AS messageCount,
-      (SELECT COUNT(*) FROM contacts WHERE owner_id = ? OR contact_id = ?) AS contactCount,
-      (SELECT COUNT(*) FROM stickers WHERE owner_id = ?) AS stickerCount
+      (SELECT COUNT(*)::int FROM messages WHERE from_id = ? OR to_id = ?) AS "messageCount",
+      (SELECT COUNT(*)::int FROM contacts WHERE owner_id = ? OR contact_id = ?) AS "contactCount",
+      (SELECT COUNT(*)::int FROM stickers WHERE owner_id = ?) AS "stickerCount"
   `).get(user.id, user.id, user.id, user.id, user.id);
   return {
     ...sanitizeUser(user),
@@ -356,8 +395,8 @@ export function sanitizeAdminUser(user) {
   };
 }
 
-export function areContacts(userId, contactId) {
-  const row = db
+export async function areContacts(userId, contactId) {
+  const row = await getDb()
     .prepare(
       `SELECT 1 FROM contacts
        WHERE (owner_id = ? AND contact_id = ?) OR (owner_id = ? AND contact_id = ?)
@@ -367,36 +406,36 @@ export function areContacts(userId, contactId) {
   return Boolean(row);
 }
 
-export function getStickerByIdForOwner(stickerId, ownerId) {
+export async function getStickerByIdForOwner(stickerId, ownerId) {
   return rowToSticker(
-    db.prepare(`SELECT ${stickerSelect()} FROM stickers WHERE id = ? AND owner_id = ?`).get(stickerId, ownerId)
+    await getDb().prepare(`SELECT ${stickerSelect()} FROM stickers WHERE id = ? AND owner_id = ?`).get(stickerId, ownerId)
   );
 }
 
-export function getMessageById(messageId) {
-  return rowToMessage(db.prepare(`SELECT ${messageSelect()} FROM messages WHERE id = ?`).get(messageId));
+export async function getMessageById(messageId) {
+  return rowToMessage(await getDb().prepare(`SELECT ${messageSelect()} FROM messages WHERE id = ?`).get(messageId));
 }
 
-export function getPlannerTaskById(taskId) {
-  return db.prepare(`SELECT ${plannerTaskSelect()} FROM planner_tasks WHERE id = ?`).get(taskId);
+export async function getPlannerTaskById(taskId) {
+  return getDb().prepare(`SELECT ${plannerTaskSelect()} FROM planner_tasks WHERE id = ?`).get(taskId);
 }
 
-export function getPlannerTaskForUser(taskId, user) {
-  const task = getPlannerTaskById(taskId);
+export async function getPlannerTaskForUser(taskId, user) {
+  const task = await getPlannerTaskById(taskId);
   if (!task) return null;
   const participantIds = String(task.conversationId || '').split(':');
   const contactId = participantIds.find((id) => id && id !== user.id);
-  const target = contactId ? getUserById(contactId) : null;
-  if (!target || target.disabledAt || !areContacts(user.id, target.id)) return null;
+  const target = contactId ? await getUserById(contactId) : null;
+  if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) return null;
   return { task, target };
 }
 
-export function getPlannerTasks(conversationId, selfId, contactId) {
-  return db.prepare(`
+export async function getPlannerTasks(conversationId, selfId, contactId) {
+  const rows = await getDb().prepare(`
     SELECT
       ${plannerTaskSelect('t.')},
-      self_confirmed.confirmed_at AS selfConfirmedAt,
-      contact_confirmed.confirmed_at AS contactConfirmedAt
+      self_confirmed.confirmed_at AS "selfConfirmedAt",
+      contact_confirmed.confirmed_at AS "contactConfirmedAt"
     FROM planner_tasks t
     LEFT JOIN planner_confirmations self_confirmed
       ON self_confirmed.task_id = t.id AND self_confirmed.user_id = ?
@@ -404,16 +443,17 @@ export function getPlannerTasks(conversationId, selfId, contactId) {
       ON contact_confirmed.task_id = t.id AND contact_confirmed.user_id = ?
     WHERE t.conversation_id = ?
     ORDER BY t.updated_at DESC, t.created_at DESC
-  `).all(selfId, contactId, conversationId).map(rowToPlannerTask);
+  `).all(selfId, contactId, conversationId);
+  return rows.map(rowToPlannerTask);
 }
 
-export function getPlannerTaskResponse(taskId, selfId, contactId) {
+export async function getPlannerTaskResponse(taskId, selfId, contactId) {
   const conversationId = conversationKey(selfId, contactId);
-  return rowToPlannerTask(db.prepare(`
+  return rowToPlannerTask(await getDb().prepare(`
     SELECT
       ${plannerTaskSelect('t.')},
-      self_confirmed.confirmed_at AS selfConfirmedAt,
-      contact_confirmed.confirmed_at AS contactConfirmedAt
+      self_confirmed.confirmed_at AS "selfConfirmedAt",
+      contact_confirmed.confirmed_at AS "contactConfirmedAt"
     FROM planner_tasks t
     LEFT JOIN planner_confirmations self_confirmed
       ON self_confirmed.task_id = t.id AND self_confirmed.user_id = ?

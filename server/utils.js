@@ -42,7 +42,3 @@ export function messagePreview(message) {
 export function isImageDataUrl(value) {
   return /^data:image\/(png|jpe?g|gif|webp);base64,[a-zA-Z0-9+/=]+$/.test(String(value || ''));
 }
-
-export function isUploadPath(value) {
-  return String(value || '').startsWith('/uploads/');
-}

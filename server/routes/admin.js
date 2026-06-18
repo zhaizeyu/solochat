@@ -17,17 +17,17 @@ export async function handleAdmin(req, res, pathName, user) {
   const db = getDb();
 
   if (req.method === 'GET' && pathName === '/api/admin/users') {
-    const users = db
+    const baseUsers = (await db
       .prepare(`SELECT ${userSelect()} FROM users ORDER BY created_at DESC`)
-      .all()
+      .all())
       .map(rowToUser)
-      .map(sanitizeAdminUser);
+    const users = await Promise.all(baseUsers.map(sanitizeAdminUser));
     return json(res, 200, { users });
   }
 
   if (req.method === 'PATCH' && pathName.startsWith('/api/admin/users/') && pathName.endsWith('/password')) {
     const userId = pathName.split('/').at(-2);
-    const target = getUserById(userId);
+    const target = await getUserById(userId);
     const body = await readBody(req);
     const password = String(body.password || '');
     if (!target) {
@@ -39,13 +39,13 @@ export async function handleAdmin(req, res, pathName, user) {
     if (password.length < 6) {
       return json(res, 400, { message: '密码至少 6 位' });
     }
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), target.id);
-    return json(res, 200, { user: sanitizeAdminUser(getUserById(target.id)) });
+    await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), target.id);
+    return json(res, 200, { user: await sanitizeAdminUser(await getUserById(target.id)) });
   }
 
   if (req.method === 'DELETE' && pathName.startsWith('/api/admin/users/') && pathName.endsWith('/data')) {
     const userId = pathName.split('/').at(-2);
-    const target = getUserById(userId);
+    const target = await getUserById(userId);
     if (!target) {
       return json(res, 404, { message: '用户不存在' });
     }
@@ -55,22 +55,22 @@ export async function handleAdmin(req, res, pathName, user) {
     if (target.isAdmin) {
       return json(res, 400, { message: '不能清理管理员账号' });
     }
-    execTransaction(() => {
-      const taskIds = db
+    await execTransaction(async () => {
+      const taskIds = (await db
         .prepare(`SELECT id FROM planner_tasks WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?`)
-        .all(target.id, `${target.id}:%`, `%:${target.id}`)
+        .all(target.id, `${target.id}:%`, `%:${target.id}`))
         .map((task) => task.id);
       for (const taskId of taskIds) {
-        db.prepare('DELETE FROM planner_confirmations WHERE task_id = ?').run(taskId);
+        await db.prepare('DELETE FROM planner_confirmations WHERE task_id = ?').run(taskId);
       }
-      db.prepare(`DELETE FROM planner_confirmations WHERE user_id = ?`).run(target.id);
-      db.prepare(`DELETE FROM planner_tasks WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?`)
+      await db.prepare(`DELETE FROM planner_confirmations WHERE user_id = ?`).run(target.id);
+      await db.prepare(`DELETE FROM planner_tasks WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?`)
         .run(target.id, `${target.id}:%`, `%:${target.id}`);
-      db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(target.id, target.id);
-      db.prepare('DELETE FROM messages WHERE from_id = ? OR to_id = ?').run(target.id, target.id);
-      db.prepare('DELETE FROM stickers WHERE owner_id = ?').run(target.id);
-      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(target.id);
-      db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
+      await db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(target.id, target.id);
+      await db.prepare('DELETE FROM messages WHERE from_id = ? OR to_id = ?').run(target.id, target.id);
+      await db.prepare('DELETE FROM stickers WHERE owner_id = ?').run(target.id);
+      await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(target.id);
+      await db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
     });
     return json(res, 200, { ok: true });
   }

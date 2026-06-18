@@ -13,14 +13,14 @@ import {
 import { json, readBody } from '../http-utils.js';
 import { conversationKey, messagePreview, parseJson, stringifyJson } from '../utils.js';
 
-function updateQuotesForRecalledMessage(message, now) {
+async function updateQuotesForRecalledMessage(message, now) {
   const db = getDb();
-  const rows = db.prepare(`SELECT id, quote_json AS quoteJson FROM messages WHERE quote_json IS NOT NULL`).all();
+  const rows = await db.prepare(`SELECT id, quote_json AS "quoteJson" FROM messages WHERE quote_json IS NOT NULL`).all();
   const update = db.prepare('UPDATE messages SET quote_json = ? WHERE id = ?');
   for (const row of rows) {
     const quote = parseJson(row.quoteJson);
     if (quote?.id === message.id) {
-      update.run(
+      await update.run(
         stringifyJson({
           ...quote,
           text: '消息已撤回',
@@ -37,8 +37,8 @@ export async function handleMessages(req, res, pathName, user, url) {
 
   if (req.method === 'GET' && pathName.startsWith('/api/messages/')) {
     const contactId = pathName.split('/').pop();
-    const target = getUserById(contactId);
-    if (!target || target.disabledAt || !areContacts(user.id, target.id)) {
+    const target = await getUserById(contactId);
+    if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) {
       return json(res, 404, { message: '联系人不存在' });
     }
     const key = conversationKey(user.id, target.id);
@@ -48,7 +48,7 @@ export async function handleMessages(req, res, pathName, user, url) {
     let rows;
 
     if (after) {
-      rows = db
+      rows = await db
         .prepare(`
           SELECT ${messageSelect()}
           FROM messages
@@ -58,7 +58,7 @@ export async function handleMessages(req, res, pathName, user, url) {
         `)
         .all(key, after, limit);
     } else if (before) {
-      rows = db
+      rows = (await db
         .prepare(`
           SELECT ${messageSelect()}
           FROM messages
@@ -66,10 +66,10 @@ export async function handleMessages(req, res, pathName, user, url) {
           ORDER BY created_at DESC
           LIMIT ?
         `)
-        .all(key, before, limit)
+        .all(key, before, limit))
         .reverse();
     } else {
-      rows = db
+      rows = (await db
         .prepare(`
           SELECT ${messageSelect()}
           FROM messages
@@ -77,7 +77,7 @@ export async function handleMessages(req, res, pathName, user, url) {
           ORDER BY created_at DESC
           LIMIT ?
         `)
-        .all(key, limit)
+        .all(key, limit))
         .reverse();
     }
 
@@ -85,7 +85,7 @@ export async function handleMessages(req, res, pathName, user, url) {
     const firstCreatedAt = messages[0]?.createdAt || before || null;
     const hasMore = firstCreatedAt
       ? Boolean(
-          db
+          await db
             .prepare('SELECT 1 FROM messages WHERE conversation_id = ? AND created_at < ? LIMIT 1')
             .get(key, firstCreatedAt)
         )
@@ -96,13 +96,13 @@ export async function handleMessages(req, res, pathName, user, url) {
   if (req.method === 'POST' && pathName.startsWith('/api/messages/') && pathName.endsWith('/read')) {
     const parts = pathName.split('/');
     const contactId = parts.at(-2);
-    const target = getUserById(contactId);
-    if (!target || target.disabledAt || !areContacts(user.id, target.id)) {
+    const target = await getUserById(contactId);
+    if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) {
       return json(res, 404, { message: '联系人不存在' });
     }
     const key = conversationKey(user.id, target.id);
     const now = new Date().toISOString();
-    const result = db.prepare(`
+    const result = await db.prepare(`
       UPDATE messages
       SET read_at = ?
       WHERE conversation_id = ? AND to_id = ? AND read_at IS NULL
@@ -113,7 +113,7 @@ export async function handleMessages(req, res, pathName, user, url) {
   if (req.method === 'PATCH' && pathName.startsWith('/api/messages/') && pathName.endsWith('/recall')) {
     const parts = pathName.split('/');
     const messageId = parts.at(-2);
-    const message = getMessageById(messageId);
+    const message = await getMessageById(messageId);
     if (!message || message.fromId !== user.id) {
       return json(res, 404, { message: '消息不存在' });
     }
@@ -124,11 +124,11 @@ export async function handleMessages(req, res, pathName, user, url) {
       return json(res, 400, { message: '消息发送超过 8 分钟，不能撤回' });
     }
     const now = new Date().toISOString();
-    execTransaction(() => {
-      db.prepare('UPDATE messages SET recalled_at = ?, text = ? WHERE id = ?').run(now, '', message.id);
-      updateQuotesForRecalledMessage(message, now);
+    await execTransaction(async () => {
+      await db.prepare('UPDATE messages SET recalled_at = ?, text = ? WHERE id = ?').run(now, '', message.id);
+      await updateQuotesForRecalledMessage(message, now);
     });
-    return json(res, 200, { message: getMessageById(message.id) });
+    return json(res, 200, { message: await getMessageById(message.id) });
   }
 
   if (req.method === 'POST' && pathName === '/api/messages') {
@@ -138,8 +138,8 @@ export async function handleMessages(req, res, pathName, user, url) {
     const text = String(body.text || '').trim();
     const quoteId = String(body.quoteId || '');
     const stickerId = String(body.stickerId || '');
-    const target = getUserById(toId);
-    if (!target || target.disabledAt || !areContacts(user.id, target.id)) {
+    const target = await getUserById(toId);
+    if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) {
       return json(res, 404, { message: '联系人不存在' });
     }
     if (kind === 'text' && !text) {
@@ -150,7 +150,7 @@ export async function handleMessages(req, res, pathName, user, url) {
     }
     let sticker = null;
     if (kind === 'sticker') {
-      sticker = getStickerByIdForOwner(stickerId, user.id);
+      sticker = await getStickerByIdForOwner(stickerId, user.id);
       if (!sticker) {
         return json(res, 404, { message: '表情包不存在' });
       }
@@ -158,14 +158,14 @@ export async function handleMessages(req, res, pathName, user, url) {
     const conversationId = conversationKey(user.id, target.id);
     let quote = null;
     if (quoteId) {
-      const quotedMessage = db
+      const quotedMessage = await db
         .prepare(`SELECT ${messageSelect()} FROM messages WHERE id = ? AND conversation_id = ?`)
         .get(quoteId, conversationId);
       const quoted = rowToMessage(quotedMessage);
       if (!quoted) {
         return json(res, 400, { message: '引用的消息不存在' });
       }
-      const author = getUserById(quoted.fromId);
+      const author = await getUserById(quoted.fromId);
       quote = {
         id: quoted.id,
         fromId: quoted.fromId,
@@ -202,7 +202,7 @@ export async function handleMessages(req, res, pathName, user, url) {
       readAt: null,
       recalledAt: null
     };
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO messages (
         id, conversation_id, from_id, to_id, kind, text, sticker_json, quote_json,
         created_at, read_at, recalled_at
