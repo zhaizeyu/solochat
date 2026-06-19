@@ -2,6 +2,7 @@ import { Pool } from 'pg';
 import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { adminUsername, bubbleThemes, databaseUrl, initialAdminPassword } from './config.js';
+import { storedImageUrlForClient } from './uploads.js';
 import { conversationKey, hashPassword, parseJson } from './utils.js';
 
 let pool;
@@ -165,7 +166,7 @@ export function sanitizeUser(user) {
     id: user.id,
     username: user.username,
     displayName: user.displayName,
-    avatarDataUrl: user.avatarDataUrl || '',
+    avatarDataUrl: storedImageUrlForClient(user.avatarDataUrl || ''),
     bubbleTheme: bubbleThemes.has(user.bubbleTheme) ? user.bubbleTheme : 'mint',
     createdAt: user.createdAt,
     disabledAt: user.disabledAt || null,
@@ -178,8 +179,33 @@ export function sanitizeSticker(sticker) {
     id: sticker.id,
     ownerId: sticker.ownerId,
     name: sticker.name,
-    imageDataUrl: sticker.imageDataUrl,
+    imageDataUrl: storedImageUrlForClient(sticker.imageDataUrl),
     createdAt: sticker.createdAt
+  };
+}
+
+function stickerForClient(sticker) {
+  if (!sticker) return null;
+  return {
+    ...sticker,
+    imageDataUrl: storedImageUrlForClient(sticker.imageDataUrl || '')
+  };
+}
+
+function quoteForClient(quote) {
+  if (!quote) return null;
+  return {
+    ...quote,
+    sticker: stickerForClient(quote.sticker)
+  };
+}
+
+export function messageForClient(message) {
+  if (!message) return null;
+  return {
+    ...message,
+    sticker: stickerForClient(message.sticker),
+    quote: quoteForClient(message.quote)
   };
 }
 

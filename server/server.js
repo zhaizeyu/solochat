@@ -9,6 +9,7 @@ import { handleContacts } from './routes/contacts.js';
 import { handleMessages } from './routes/messages.js';
 import { handlePlanner } from './routes/planner.js';
 import { handleStickers } from './routes/stickers.js';
+import { handleLocalUploadRequest, syncR2ImagesToLocal } from './uploads.js';
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
@@ -40,10 +41,18 @@ async function handleApi(req, res) {
 
 assertRuntimeConfig();
 await openDb();
+const localSync = await syncR2ImagesToLocal();
+if (localSync.enabled) {
+  console.log(`USE_LOCAL enabled: synced R2 images to local uploads (${localSync.downloaded} downloaded, ${localSync.skipped} skipped)`);
+}
 await app.prepare();
 
 const server = http.createServer(async (req, res) => {
   try {
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    if (handleLocalUploadRequest(req, res, url.pathname)) {
+      return;
+    }
     if (req.url?.startsWith('/api/')) {
       await handleApi(req, res);
       return;

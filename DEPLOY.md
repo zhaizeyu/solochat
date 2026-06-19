@@ -13,11 +13,14 @@ R2_ACCESS_KEY_ID=your-r2-access-key-id
 R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
 S3_API_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_PUBLIC_BASE_URL=https://uploads.example.com
+USE_LOCAL=false
 HOST=0.0.0.0
 PORT=3000
 ```
 
 Coolify can still render templates such as `{{ team.DATABASE_URL }}` before the container starts. The app only reads the final environment variable values.
+
+Set `USE_LOCAL=true` to mirror R2 images into local storage on startup and serve client image URLs from `/uploads/...` when the local file exists. New uploads are also written to local storage before being uploaded to R2. The local directory defaults to `data/uploads`; set `LOCAL_UPLOADS_DIR` if you need a different mounted persistent volume.
 
 ## Local Docker
 

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { maxImageDataUrlLength } from '../config.js';
 import { getDb, getStickerByIdForOwner, rowToSticker, sanitizeSticker, stickerSelect } from '../db.js';
 import { json, readBody } from '../http-utils.js';
-import { isR2PublicUrl, saveImageDataUrl } from '../uploads.js';
+import { isStoredImageUrl, r2PublicUrlForStoredImage, saveImageDataUrl } from '../uploads.js';
 import { isImageDataUrl, normalizeName } from '../utils.js';
 
 export async function handleStickers(req, res, pathName, user) {
@@ -21,12 +21,12 @@ export async function handleStickers(req, res, pathName, user) {
     const body = await readBody(req);
     const name = normalizeName(body.name).slice(0, 32) || '表情包';
     const imageDataUrl = String(body.imageDataUrl || '');
-    const isStoredImage = isR2PublicUrl(imageDataUrl);
+    const isStoredImage = isStoredImageUrl(imageDataUrl);
     if ((!isImageDataUrl(imageDataUrl) || imageDataUrl.length > maxImageDataUrlLength) && !isStoredImage) {
       return json(res, 400, { message: '表情包需为 700KB 以内的图片' });
     }
     const imagePath = isStoredImage
-      ? imageDataUrl
+      ? r2PublicUrlForStoredImage(imageDataUrl)
       : await saveImageDataUrl(imageDataUrl, 'stickers', crypto.randomUUID());
     const sticker = {
       id: crypto.randomUUID(),

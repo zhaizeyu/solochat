@@ -61,6 +61,9 @@ export const r2Config = {
   endpoint: process.env.S3_API_ENDPOINT || (process.env.R2_ACCOUNT_ID ? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : ''),
   publicBaseUrl: process.env.R2_PUBLIC_BASE_URL || process.env.S3_API || ''
 };
+export const useLocalUploads = String(process.env.USE_LOCAL || 'false').toLowerCase() === 'true';
+export const localUploadsDir = process.env.LOCAL_UPLOADS_DIR || path.join(rootDir, 'data', 'uploads');
+export const localUploadsPublicPath = '/uploads';
 export const recallWindowMs = 8 * 60 * 1000;
 export const maxImageDataUrlLength = 700_000;
 export const bubbleThemes = new Set(['mint', 'pink', 'purple', 'sky', 'peach', 'lavender']);

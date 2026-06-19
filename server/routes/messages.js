@@ -7,6 +7,7 @@ import {
   getMessageById,
   getStickerByIdForOwner,
   getUserById,
+  messageForClient,
   messageSelect,
   rowToMessage
 } from '../db.js';
@@ -90,7 +91,7 @@ export async function handleMessages(req, res, pathName, user, url) {
             .get(key, firstCreatedAt)
         )
       : false;
-    return json(res, 200, { messages, hasMore });
+    return json(res, 200, { messages: messages.map(messageForClient), hasMore });
   }
 
   if (req.method === 'POST' && pathName.startsWith('/api/messages/') && pathName.endsWith('/read')) {
@@ -128,7 +129,7 @@ export async function handleMessages(req, res, pathName, user, url) {
       await db.prepare('UPDATE messages SET recalled_at = ?, text = ? WHERE id = ?').run(now, '', message.id);
       await updateQuotesForRecalledMessage(message, now);
     });
-    return json(res, 200, { message: await getMessageById(message.id) });
+    return json(res, 200, { message: messageForClient(await getMessageById(message.id)) });
   }
 
   if (req.method === 'POST' && pathName === '/api/messages') {
@@ -220,7 +221,7 @@ export async function handleMessages(req, res, pathName, user, url) {
       null,
       null
     );
-    return json(res, 201, { message });
+    return json(res, 201, { message: messageForClient(message) });
   }
 
   return false;
