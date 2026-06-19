@@ -1,6 +1,6 @@
 import http from 'node:http';
 import next from 'next';
-import { assertRuntimeConfig, port } from './config.js';
+import { assertRuntimeConfig, host, port } from './config.js';
 import { getAuthUser, openDb } from './db.js';
 import { json } from './http-utils.js';
 import { handleAdmin } from './routes/admin.js';
@@ -54,6 +54,6 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(port, () => {
-  console.log(`Next.js app listening on http://localhost:${port}`);
+server.listen(port, host, () => {
+  console.log(`Next.js app listening on http://${host}:${port}`);
 });

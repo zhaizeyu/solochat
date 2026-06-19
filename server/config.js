@@ -25,7 +25,34 @@ function loadEnvFile(filePath) {
 loadEnvFile(path.join(rootDir, '.env'));
 
 export const port = Number(process.env.PORT || 3101);
-export const databaseUrl = process.env.DATABASE_URL || '';
+export const host = process.env.HOST || '0.0.0.0';
+
+function firstEnv(keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) return value;
+  }
+  return '';
+}
+
+function buildDatabaseUrlFromParts() {
+  const dbHost = firstEnv(['PGHOST', 'POSTGRES_HOST', 'POSTGRES_HOSTNAME', 'DATABASE_HOST', 'DB_HOST']);
+  const dbName = firstEnv(['PGDATABASE', 'POSTGRES_DB', 'POSTGRES_DATABASE', 'DATABASE_NAME', 'DB_NAME']);
+  const dbUser = firstEnv(['PGUSER', 'POSTGRES_USER', 'DATABASE_USER', 'DB_USER']);
+  const dbPassword = firstEnv(['PGPASSWORD', 'POSTGRES_PASSWORD', 'DATABASE_PASSWORD', 'DB_PASSWORD']);
+  if (!dbHost || !dbName || !dbUser) return '';
+
+  const dbPort = firstEnv(['PGPORT', 'POSTGRES_PORT', 'DATABASE_PORT', 'DB_PORT']) || '5432';
+  const url = new URL('postgres://localhost');
+  url.hostname = dbHost;
+  url.port = dbPort;
+  url.username = dbUser;
+  url.password = dbPassword;
+  url.pathname = `/${dbName}`;
+  return url.toString();
+}
+
+export const databaseUrl = firstEnv(['DATABASE_URL', 'POSTGRES_URL', 'POSTGRESQL_URL']) || buildDatabaseUrlFromParts();
 export const r2Config = {
   accountId: process.env.R2_ACCOUNT_ID || '',
   bucket: process.env.R2_BUCKET || '',
@@ -40,6 +67,28 @@ export const bubbleThemes = new Set(['mint', 'pink', 'purple', 'sky', 'peach', '
 export const adminUsername = 'admin';
 export const initialAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
+function validateDatabaseUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('DATABASE_URL 格式无效，请使用 postgres://user:password@host:port/database');
+  }
+
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+    throw new Error('DATABASE_URL 协议无效，请使用 postgres:// 或 postgresql://');
+  }
+
+  if (!url.hostname || url.pathname === '/' || !url.pathname) {
+    throw new Error('DATABASE_URL 缺少数据库 host 或 database 名称');
+  }
+
+  const dbName = url.pathname.slice(1);
+  if (!dbName || dbName.includes('/')) {
+    throw new Error('DATABASE_URL 的 database 名称无效，请使用 postgres://user:password@host:port/database');
+  }
+}
+
 export function assertRuntimeConfig() {
   const missing = Object.entries({
     DATABASE_URL: databaseUrl,
@@ -52,4 +101,5 @@ export function assertRuntimeConfig() {
   if (missing.length) {
     throw new Error(`环境变量缺失: ${missing.map(([key]) => key).join(', ')}`);
   }
+  validateDatabaseUrl(databaseUrl);
 }

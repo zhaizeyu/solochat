@@ -350,8 +350,16 @@ async function releaseDeletedUsernames() {
 }
 
 export async function openDb() {
-  pool = new Pool({ connectionString: databaseUrl });
-  await createSchema();
+  pool = new Pool({ connectionString: databaseUrl, connectionTimeoutMillis: 5000 });
+  try {
+    await createSchema();
+  } catch (error) {
+    await pool.end().catch(() => {});
+    pool = null;
+    const url = new URL(databaseUrl);
+    throw new Error(`数据库连接失败: ${url.hostname}:${url.port || '5432'} - ${error.message}`);
+  }
+
   await releaseDeletedUsernames();
   await ensureAdminUser();
 }
