@@ -28,6 +28,7 @@ COPY --from=build /app/components ./components
 COPY --from=build /app/lib ./lib
 COPY --from=build /app/public ./public
 COPY --from=build /app/server ./server
+COPY --from=build /app/src ./src
 
 EXPOSE 3000
 
