@@ -1,0 +1,10 @@
+.git
+.next
+.runtime
+data
+dist
+logs
+node_modules
+.env
+npm-debug.log
+Dockerfile
