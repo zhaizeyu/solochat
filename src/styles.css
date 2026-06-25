@@ -1503,7 +1503,7 @@ textarea:focus {
 
 .admin-user {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(260px, auto) minmax(360px, 440px);
+  grid-template-columns: minmax(200px, 1fr) minmax(210px, auto) minmax(180px, auto) minmax(340px, 420px);
   align-items: center;
   gap: 16px;
   border: 1px solid var(--hairline);
@@ -1538,7 +1538,8 @@ textarea:focus {
 }
 
 .admin-user-main span,
-.admin-user-meta {
+.admin-user-meta,
+.admin-user-times {
   color: var(--ink-subtle);
   font-size: 13px;
 }
@@ -1554,6 +1555,27 @@ textarea:focus {
   border-radius: 999px;
   background: var(--surface);
   padding: 5px 8px;
+}
+
+.admin-user-times {
+  display: grid;
+  gap: 5px;
+}
+
+.admin-user-times div {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-user-times time,
+.admin-user-times em {
+  color: var(--ink);
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .admin-user-controls {

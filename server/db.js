@@ -417,15 +417,17 @@ export async function sanitizeAdminUser(user) {
     SELECT
       (SELECT COUNT(*)::int FROM messages WHERE from_id = ? OR to_id = ?) AS "messageCount",
       (SELECT COUNT(*)::int FROM contacts WHERE owner_id = ? OR contact_id = ?) AS "contactCount",
-      (SELECT COUNT(*)::int FROM stickers WHERE owner_id = ?) AS "stickerCount"
-  `).get(user.id, user.id, user.id, user.id, user.id);
+      (SELECT COUNT(*)::int FROM stickers WHERE owner_id = ?) AS "stickerCount",
+      (SELECT MAX(created_at) FROM sessions WHERE user_id = ?) AS "lastLoginAt"
+  `).get(user.id, user.id, user.id, user.id, user.id, user.id);
   return {
     ...sanitizeUser(user),
     avatarDataUrl: '',
     deletedUsername: user.deletedUsername || null,
     messageCount: counts.messageCount,
     contactCount: counts.contactCount,
-    stickerCount: counts.stickerCount
+    stickerCount: counts.stickerCount,
+    lastLoginAt: counts.lastLoginAt || null
   };
 }
 

@@ -1355,6 +1355,19 @@ function ChatWindow({
   );
 }
 
+function formatAdminDate(value, emptyText = '未知') {
+  if (!value) return emptyText;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '未知';
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
 function AdminPanel({ self, onLogout }) {
   const [users, setUsers] = useState([]);
   const [passwords, setPasswords] = useState({});
@@ -1454,6 +1467,20 @@ function AdminPanel({ self, onLogout }) {
                     <span>消息 {target.messageCount}</span>
                     <span>联系人 {target.contactCount}</span>
                     <span>表情 {target.stickerCount}</span>
+                  </div>
+                  <div className="admin-user-times">
+                    <div>
+                      <span>创建</span>
+                      <time dateTime={target.createdAt || undefined}>{formatAdminDate(target.createdAt)}</time>
+                    </div>
+                    <div>
+                      <span>登录</span>
+                      {target.lastLoginAt ? (
+                        <time dateTime={target.lastLoginAt}>{formatAdminDate(target.lastLoginAt)}</time>
+                      ) : (
+                        <em>{formatAdminDate(target.lastLoginAt, '从未登录')}</em>
+                      )}
+                    </div>
                   </div>
                   <div className="admin-user-controls">
                     <Input
