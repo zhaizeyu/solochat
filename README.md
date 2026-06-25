@@ -87,6 +87,16 @@ npm run dev
 
 请勿在生产环境使用默认密码 `admin123`。
 
+### 4. 运行测试
+
+```bash
+npm test
+```
+
+测试会读取当前环境或 `.env` 中的 PostgreSQL 连接配置，并在同一个数据库实例里创建独立的临时 schema。测试数据只写入该临时 schema，结束后会自动删除。
+
+建议使用本地或测试数据库运行测试，不要使用生产数据库账号。
+
 ## 生产运行
 
 构建并以前台进程启动：
@@ -137,6 +147,7 @@ Coolify 部署说明见 [DEPLOY.md](./DEPLOY.md)。
 | 命令 | 用途 |
 | --- | --- |
 | `npm run dev` | 启动开发服务 |
+| `npm test` | 运行后端核心回归测试 |
 | `npm run build` | 构建生产版本 |
 | `npm start` | 启动生产服务 |
 | `npm run server` | 直接启动自定义服务 |
@@ -155,6 +166,8 @@ server/routes/       认证、联系人、消息、计划等接口
 src/main.jsx         前端应用主体
 src/styles.css       全局样式
 scripts/             开发及进程管理脚本
+test/                Node.js 测试用例
+test-support/        测试数据库隔离与请求 helper
 public/              静态资源
 Dockerfile           生产镜像配置
 DEPLOY.md            Coolify 与 Docker 部署补充说明
