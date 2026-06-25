@@ -38,6 +38,7 @@ export async function handlePublicAuth(req, res, pathName) {
       passwordHash: hashPassword(password),
       avatarDataUrl: '',
       bubbleTheme: 'mint',
+      bio: '',
       createdAt: new Date().toISOString(),
       disabledAt: null,
       deletedUsername: null,
@@ -46,8 +47,8 @@ export async function handlePublicAuth(req, res, pathName) {
     await db.prepare(`
       INSERT INTO users (
         id, username, display_name, password_hash, avatar_path, bubble_theme,
-        created_at, disabled_at, deleted_username, is_admin
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        bio, created_at, disabled_at, deleted_username, is_admin
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       user.id,
       user.username,
@@ -55,6 +56,7 @@ export async function handlePublicAuth(req, res, pathName) {
       user.passwordHash,
       null,
       user.bubbleTheme,
+      user.bio,
       user.createdAt,
       null,
       null,
@@ -110,6 +112,13 @@ export async function handleCurrentUser(req, res, pathName, user) {
       }
       updates.bubbleTheme = bubbleTheme;
     }
+    if (Object.hasOwn(body, 'bio')) {
+      const bio = String(body.bio || '').trim();
+      if (bio.length > 120) {
+        return json(res, 400, { message: '个人简介最多 120 个字符' });
+      }
+      updates.bio = bio;
+    }
     if (Object.hasOwn(updates, 'displayName')) {
       await db.prepare('UPDATE users SET display_name = ? WHERE id = ?').run(updates.displayName, user.id);
     }
@@ -118,6 +127,9 @@ export async function handleCurrentUser(req, res, pathName, user) {
     }
     if (Object.hasOwn(updates, 'bubbleTheme')) {
       await db.prepare('UPDATE users SET bubble_theme = ? WHERE id = ?').run(updates.bubbleTheme, user.id);
+    }
+    if (Object.hasOwn(updates, 'bio')) {
+      await db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(updates.bio, user.id);
     }
     return json(res, 200, { user: sanitizeUser(await getUserById(user.id)) });
   }

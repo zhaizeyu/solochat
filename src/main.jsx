@@ -359,6 +359,12 @@ const api = {
       body: JSON.stringify({ displayName })
     });
   },
+  updateBio(bio) {
+    return this.request('/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ bio })
+    });
+  },
   updateAvatar(avatarDataUrl) {
     return this.request('/api/me', {
       method: 'PATCH',
@@ -525,6 +531,7 @@ function ContactList({
   bubblePresets,
   onBubbleThemeChange,
   onUpdateProfile,
+  onUpdateBio,
   onUpdateAvatar,
   onLogout,
   onDeleteAccount
@@ -533,13 +540,19 @@ function ContactList({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const [editingBio, setEditingBio] = useState(false);
   const [displayName, setDisplayName] = useState(self.displayName);
+  const [bio, setBio] = useState(self.bio || '');
   const [profileError, setProfileError] = useState('');
   const [profileBusy, setProfileBusy] = useState(false);
 
   useEffect(() => {
     setDisplayName(self.displayName);
   }, [self.displayName]);
+
+  useEffect(() => {
+    setBio(self.bio || '');
+  }, [self.bio]);
 
   const selectedBubblePreset = bubblePresets.find((preset) => preset.id === bubbleTheme) || bubblePresets[0];
 
@@ -571,6 +584,30 @@ function ContactList({
     try {
       await onUpdateProfile(nextName);
       setEditingName(false);
+    } catch (err) {
+      setProfileError(err.message);
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+  async function saveBio() {
+    if (profileBusy) return;
+    const nextBio = bio.trim();
+    if (nextBio === (self.bio || '')) {
+      setEditingBio(false);
+      setBio(self.bio || '');
+      return;
+    }
+    if (nextBio.length > 120) {
+      setProfileError('个人简介最多 120 个字符');
+      return;
+    }
+    setProfileBusy(true);
+    setProfileError('');
+    try {
+      await onUpdateBio(nextBio);
+      setEditingBio(false);
     } catch (err) {
       setProfileError(err.message);
     } finally {
@@ -671,6 +708,28 @@ function ContactList({
           注销
         </button>
       </div>
+      <section className={`profile-bio ${editingBio ? 'editing' : ''}`} aria-label="个人简介">
+        {editingBio ? (
+          <Textarea
+            value={bio}
+            onChange={(event) => setBio(event.target.value)}
+            onBlur={saveBio}
+            maxLength={120}
+            placeholder="写一句介绍自己的话"
+            disabled={profileBusy}
+            autoFocus
+          />
+        ) : (
+          <button
+            type="button"
+            className={`profile-bio-display ${self.bio ? '' : 'empty'}`}
+            onClick={() => setEditingBio(true)}
+            disabled={profileBusy}
+          >
+            {self.bio || '点击这里，填写简介'}
+          </button>
+        )}
+      </section>
       {profileError && <div className="inline-error">{profileError}</div>}
 
       <section
@@ -773,6 +832,7 @@ function ChatWindow({
   const [selectedStickerIds, setSelectedStickerIds] = useState([]);
   const [savingStickerMessageIds, setSavingStickerMessageIds] = useState([]);
   const [plannerOpen, setPlannerOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState('chat');
   const [plannerTasks, setPlannerTasks] = useState([]);
   const bottomRef = useRef(null);
@@ -812,6 +872,7 @@ function ChatWindow({
 
   useEffect(() => {
     setQuote(null);
+    setProfileOpen(false);
     setMobilePane('chat');
   }, [contact?.id]);
 
@@ -1130,11 +1191,13 @@ function ChatWindow({
           <button type="button" className="mobile-back-button" onClick={onBack} aria-label="返回联系人">
             返回
           </button>
-          <Avatar user={contact} />
-          <div className="chat-header-copy">
-            <h2>{contact.displayName}</h2>
-            <span>@{contact.username}</span>
-          </div>
+          <button type="button" className="chat-profile-button" onClick={() => setProfileOpen(true)}>
+            <Avatar user={contact} />
+            <div className="chat-header-copy">
+              <h2>{contact.displayName}</h2>
+              <span>@{contact.username}</span>
+            </div>
+          </button>
           <button
             type="button"
             className={`planner-header-button ${plannerOpen ? 'active' : ''}`}
@@ -1146,6 +1209,30 @@ function ChatWindow({
             待办 {activePlannerCount}
           </button>
         </header>
+        {profileOpen && (
+          <div className="profile-dialog-backdrop" role="presentation" onClick={() => setProfileOpen(false)}>
+            <section
+              className="contact-profile-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-label="联系人资料"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="contact-profile-head">
+                <Avatar user={contact} />
+                <div>
+                  <h3>{contact.displayName}</h3>
+                  <span>@{contact.username}</span>
+                </div>
+              </div>
+              <div className="contact-profile-bio">
+                <span>个人简介</span>
+                <p>{contact.bio || '还没有填写简介'}</p>
+              </div>
+              <button type="button" onClick={() => setProfileOpen(false)}>关闭</button>
+            </section>
+          </div>
+        )}
 
         <div className="mobile-chat-tabs" aria-label="聊天视图切换">
           <button type="button" className={mobilePane === 'chat' ? 'active' : ''} onClick={() => setMobilePane('chat')}>
@@ -1764,6 +1851,11 @@ export default function App() {
         onLogout={clearSession}
         onUpdateProfile={async (displayName) => {
           const data = await api.updateProfile(displayName);
+          setUser(data.user);
+          await refreshContacts();
+        }}
+        onUpdateBio={async (bio) => {
+          const data = await api.updateBio(bio);
           setUser(data.user);
           await refreshContacts();
         }}

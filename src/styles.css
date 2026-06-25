@@ -318,6 +318,7 @@ textarea:focus {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .profile-row {
@@ -389,16 +390,62 @@ textarea:focus {
 }
 
 .account-actions {
-  padding: 12px;
-  margin-top: 10px;
-  border: 1px solid rgba(18, 184, 134, 0.14);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.66);
+  padding: 8px 2px 0;
+  margin-top: 8px;
 }
 
 .account-actions .danger-link {
   border-color: #f1c5bd;
   color: var(--danger);
+}
+
+.profile-bio {
+  margin-top: 8px;
+  border: 1px solid rgba(21, 151, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.66);
+  overflow: hidden;
+}
+
+.profile-bio.editing {
+  padding: 0;
+}
+
+.profile-bio textarea {
+  min-height: 58px;
+  resize: vertical;
+  line-height: 1.5;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+.profile-bio-display {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow: hidden;
+  padding: 9px 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-bio-display:hover {
+  color: var(--ink);
+}
+
+.profile-bio-display.empty {
+  color: var(--ink-subtle);
+}
+
+.profile-bio-display:disabled {
+  opacity: 0.52;
+  cursor: default;
 }
 
 .bubble-theme-picker {
@@ -480,15 +527,18 @@ textarea:focus {
 }
 
 .contact-title {
-  margin: 22px 0 10px;
+  margin: 16px 0 10px;
   color: var(--ink-subtle);
   font-size: 13px;
   font-weight: 800;
 }
 
 .contact-list {
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   display: grid;
+  align-content: start;
   gap: 8px;
   padding-right: 2px;
 }
@@ -590,6 +640,23 @@ textarea:focus {
   flex: 1;
 }
 
+.chat-profile-button {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.chat-profile-button .avatar {
+  flex: 0 0 auto;
+}
+
 .chat-header h2 {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -607,6 +674,80 @@ textarea:focus {
   font-weight: 900;
   padding: 0 12px;
   white-space: nowrap;
+}
+
+.profile-dialog-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 33, 43, 0.28);
+  backdrop-filter: blur(4px);
+}
+
+.contact-profile-dialog {
+  width: min(380px, 100%);
+  display: grid;
+  gap: 18px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.contact-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.contact-profile-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.contact-profile-head h3 {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+}
+
+.contact-profile-head span,
+.contact-profile-bio span {
+  color: var(--ink-muted);
+  font-size: 13px;
+}
+
+.contact-profile-bio {
+  display: grid;
+  gap: 8px;
+}
+
+.contact-profile-bio p {
+  min-height: 48px;
+  color: var(--ink);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.contact-profile-dialog > button {
+  justify-self: end;
+  height: 34px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 14px;
 }
 
 .planner-header-button:hover,
@@ -1651,7 +1792,7 @@ textarea:focus {
 
   .app-shell.mobile-chat-selected .chat-panel,
   .app-shell.mobile-contact-selected .sidebar {
-    display: grid;
+    display: flex;
   }
 
   .chat-panel,
@@ -1671,6 +1812,15 @@ textarea:focus {
 
   .chat-header {
     padding: 12px;
+  }
+
+  .profile-dialog-backdrop {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .contact-profile-dialog {
+    width: 100%;
   }
 
   .mobile-back-button {

@@ -52,6 +52,7 @@ export function rowToUser(row) {
     avatarDataUrl: row.avatarPath || '',
     avatarPath: row.avatarPath || null,
     bubbleTheme: row.bubbleTheme || 'mint',
+    bio: row.bio || '',
     createdAt: row.createdAt,
     disabledAt: row.disabledAt || null,
     deletedUsername: row.deletedUsername || null,
@@ -114,6 +115,7 @@ export function userSelect(prefix = '') {
     ${prefix}password_hash AS "passwordHash",
     ${prefix}avatar_path AS "avatarPath",
     ${prefix}bubble_theme AS "bubbleTheme",
+    ${prefix}bio AS bio,
     ${prefix}created_at AS "createdAt",
     ${prefix}disabled_at AS "disabledAt",
     ${prefix}deleted_username AS "deletedUsername",
@@ -168,6 +170,7 @@ export function sanitizeUser(user) {
     displayName: user.displayName,
     avatarDataUrl: storedImageUrlForClient(user.avatarDataUrl || ''),
     bubbleTheme: bubbleThemes.has(user.bubbleTheme) ? user.bubbleTheme : 'mint',
+    bio: user.bio || '',
     createdAt: user.createdAt,
     disabledAt: user.disabledAt || null,
     isAdmin: Boolean(user.isAdmin)
@@ -239,6 +242,7 @@ async function createSchema() {
       password_hash TEXT NOT NULL,
       avatar_path TEXT,
       bubble_theme TEXT,
+      bio TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL,
       disabled_at TEXT,
       deleted_username TEXT,
@@ -327,6 +331,7 @@ async function createSchema() {
     CREATE INDEX IF NOT EXISTS idx_planner_confirmations_user
       ON planner_confirmations(user_id);
   `);
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT \'\'');
 }
 
 export function releaseDeletedUsername(user) {
@@ -347,8 +352,8 @@ async function ensureAdminUser() {
   await getDb().prepare(`
     INSERT INTO users (
       id, username, display_name, password_hash, avatar_path, bubble_theme,
-      created_at, disabled_at, deleted_username, is_admin
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      bio, created_at, disabled_at, deleted_username, is_admin
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     crypto.randomUUID(),
     adminUsername,
@@ -356,6 +361,7 @@ async function ensureAdminUser() {
     hashPassword(initialAdminPassword),
     null,
     'mint',
+    '',
     new Date().toISOString(),
     null,
     null,
