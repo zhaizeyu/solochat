@@ -641,16 +641,13 @@ textarea:focus {
 }
 
 .chat-profile-button {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 14px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
   border: 0;
   background: transparent;
   color: inherit;
   padding: 0;
-  text-align: left;
 }
 
 .chat-profile-button .avatar {

@@ -1191,13 +1191,13 @@ function ChatWindow({
           <button type="button" className="mobile-back-button" onClick={onBack} aria-label="返回联系人">
             返回
           </button>
-          <button type="button" className="chat-profile-button" onClick={() => setProfileOpen(true)}>
+          <button type="button" className="chat-profile-button" onClick={() => setProfileOpen(true)} aria-label="查看联系人简介">
             <Avatar user={contact} />
-            <div className="chat-header-copy">
-              <h2>{contact.displayName}</h2>
-              <span>@{contact.username}</span>
-            </div>
           </button>
+          <div className="chat-header-copy">
+            <h2>{contact.displayName}</h2>
+            <span>@{contact.username}</span>
+          </div>
           <button
             type="button"
             className={`planner-header-button ${plannerOpen ? 'active' : ''}`}
