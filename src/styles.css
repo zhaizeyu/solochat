@@ -308,6 +308,10 @@ textarea:focus {
   overflow: hidden;
 }
 
+.app-shell.mobile-empty-chat {
+  grid-template-columns: 1fr;
+}
+
 .sidebar {
   border-right: 1px solid var(--hairline);
   background:

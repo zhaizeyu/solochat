@@ -53,6 +53,33 @@ const ui = {
   noticeError: 'rounded-md border border-[var(--destructive-border)] bg-[var(--destructive-muted)] px-3 py-2 text-sm text-[var(--destructive)]'
 };
 
+function isMobileShellViewport() {
+  if (typeof window === 'undefined') return false;
+  const mobileMedia = window.matchMedia?.('(max-width: 760px)').matches;
+  const narrowScreen = window.screen?.width ? window.screen.width <= 760 : false;
+  const mobileUserAgent = /Android|iPhone|iPod|IEMobile|Mobile/i.test(window.navigator?.userAgent || '');
+  return Boolean(mobileMedia || narrowScreen || mobileUserAgent);
+}
+
+function useMobileShell() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    function update() {
+      setIsMobile(isMobileShellViewport());
+    }
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('orientationchange', update);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('orientationchange', update);
+    };
+  }, []);
+
+  return isMobile;
+}
+
 function TextField({ label, className = '', ...props }) {
   return (
     <Label>
@@ -1649,6 +1676,7 @@ export default function App() {
   const loadingOlderMessagesRef = useRef(false);
   const hasOlderMessagesRef = useRef(false);
   const originalTitleRef = useRef('doolulu');
+  const isMobileShell = useMobileShell();
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -1862,8 +1890,10 @@ export default function App() {
     return <AdminPanel self={user} onLogout={clearSession} />;
   }
 
+  const hideEmptyChatOnMobile = !selected && isMobileShell;
+
   return (
-    <main className={`app-shell ${selected ? 'mobile-chat-selected' : 'mobile-contact-selected'}`}>
+    <main className={`app-shell ${selected ? 'mobile-chat-selected' : 'mobile-contact-selected'} ${hideEmptyChatOnMobile ? 'mobile-empty-chat' : ''}`}>
       <ContactList
         contacts={sortedContacts}
         selectedId={selectedId}
@@ -1917,40 +1947,42 @@ export default function App() {
           await refreshContacts();
         }}
       />
-      <ChatWindow
-        contact={selected}
-        messages={messages}
-        self={user}
-        stickers={stickers}
-        bubblePresets={bubblePresets}
-        hasOlderMessages={hasOlderMessages}
-        loadingOlderMessages={loadingOlderMessages}
-        onLoadOlderMessages={() => loadOlderMessages(selected.id).catch(console.error)}
-        onSend={async (text, quoteId) => {
-          const data = await api.sendQuotedMessage(selected.id, text, quoteId);
-          upsertMessages(data.message);
-          await refreshContacts();
-        }}
-        onSendSticker={async (stickerId, quoteId) => {
-          const data = await api.sendSticker(selected.id, stickerId, quoteId);
-          upsertMessages(data.message);
-          await refreshContacts();
-        }}
-        onAddSticker={async (payload) => {
-          await api.addSticker(payload);
-          await refreshStickers();
-        }}
-        onDeleteStickers={async (stickerIds) => {
-          await Promise.all(stickerIds.map((stickerId) => api.deleteSticker(stickerId)));
-          await refreshStickers();
-        }}
-        onRecall={async (messageId) => {
-          const data = await api.recallMessage(messageId);
-          upsertMessages(data.message);
-          await refreshContacts();
-        }}
-        onBack={() => setSelected(null)}
-      />
+      {!hideEmptyChatOnMobile && (
+        <ChatWindow
+          contact={selected}
+          messages={messages}
+          self={user}
+          stickers={stickers}
+          bubblePresets={bubblePresets}
+          hasOlderMessages={hasOlderMessages}
+          loadingOlderMessages={loadingOlderMessages}
+          onLoadOlderMessages={() => loadOlderMessages(selected.id).catch(console.error)}
+          onSend={async (text, quoteId) => {
+            const data = await api.sendQuotedMessage(selected.id, text, quoteId);
+            upsertMessages(data.message);
+            await refreshContacts();
+          }}
+          onSendSticker={async (stickerId, quoteId) => {
+            const data = await api.sendSticker(selected.id, stickerId, quoteId);
+            upsertMessages(data.message);
+            await refreshContacts();
+          }}
+          onAddSticker={async (payload) => {
+            await api.addSticker(payload);
+            await refreshStickers();
+          }}
+          onDeleteStickers={async (stickerIds) => {
+            await Promise.all(stickerIds.map((stickerId) => api.deleteSticker(stickerId)));
+            await refreshStickers();
+          }}
+          onRecall={async (messageId) => {
+            const data = await api.recallMessage(messageId);
+            upsertMessages(data.message);
+            await refreshContacts();
+          }}
+          onBack={() => setSelected(null)}
+        />
+      )}
     </main>
   );
 }
