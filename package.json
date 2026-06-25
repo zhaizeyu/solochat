@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.js",
+    "test": "node --test",
     "app:start": "bash scripts/start.sh",
     "app:stop": "bash scripts/stop.sh",
     "app:restart": "bash scripts/restart.sh",
