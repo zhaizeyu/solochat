@@ -551,7 +551,7 @@ textarea:focus {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px;
+  padding: 6px;
   text-align: left;
   min-width: 0;
 }
@@ -563,6 +563,39 @@ textarea:focus {
     linear-gradient(135deg, rgba(234, 248, 245, 0.96), rgba(236, 248, 255, 0.92)),
     var(--accent-soft);
   box-shadow: var(--block-shadow);
+}
+
+.contact-select {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px;
+  text-align: left;
+}
+
+.contact-delete {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.contact-delete:hover {
+  border-color: rgba(220, 38, 38, 0.2);
+  background: rgba(254, 226, 226, 0.72);
+  color: var(--destructive);
+}
+
+.contact-delete:disabled {
+  opacity: 0.5;
 }
 
 .contact-copy {

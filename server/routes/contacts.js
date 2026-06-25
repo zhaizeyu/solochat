@@ -2,6 +2,7 @@ import {
   execTransaction,
   findActiveUserByUsername,
   getDb,
+  getUserById,
   rowToUser,
   sanitizeUser,
   userSelect
@@ -103,6 +104,27 @@ export async function handleContacts(req, res, pathName, user) {
         .run(target.id, user.id, now);
     });
     return json(res, 201, { contact: sanitizeUser(target) });
+  }
+
+  if (req.method === 'DELETE' && pathName.startsWith('/api/contacts/')) {
+    const contactId = decodeURIComponent(pathName.slice('/api/contacts/'.length));
+    const target = await getUserById(contactId);
+    if (!target || target.disabledAt) {
+      return json(res, 404, { message: '未找到该联系人' });
+    }
+    if (target.id === user.id) {
+      return json(res, 400, { message: '不能删除自己' });
+    }
+
+    const result = await db.prepare(`
+      DELETE FROM contacts
+      WHERE (owner_id = ? AND contact_id = ?)
+        OR (owner_id = ? AND contact_id = ?)
+    `).run(user.id, target.id, target.id, user.id);
+    if (!result.changes) {
+      return json(res, 404, { message: '联系人不存在' });
+    }
+    return json(res, 200, { ok: true });
   }
 
   return false;

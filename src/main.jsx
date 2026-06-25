@@ -297,6 +297,9 @@ const api = {
   addContact(username) {
     return this.request('/api/contacts', { method: 'POST', body: JSON.stringify({ username }) });
   },
+  deleteContact(contactId) {
+    return this.request(`/api/contacts/${encodeURIComponent(contactId)}`, { method: 'DELETE' });
+  },
   messages(contactId, params = {}) {
     const search = new URLSearchParams();
     for (const [key, value] of Object.entries(params)) {
@@ -526,6 +529,7 @@ function ContactList({
   selectedId,
   onSelect,
   onAddContact,
+  onDeleteContact,
   self,
   bubbleTheme,
   bubblePresets,
@@ -539,6 +543,7 @@ function ContactList({
   const [username, setUsername] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [editingBio, setEditingBio] = useState(false);
   const [displayName, setDisplayName] = useState(self.displayName);
@@ -568,6 +573,21 @@ function ContactList({
       setError(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function deleteContact(event, contact) {
+    event.stopPropagation();
+    const ok = window.confirm(`确定删除 ${contact.displayName} 吗？`);
+    if (!ok) return;
+    setDeletingId(contact.id);
+    setError('');
+    try {
+      await onDeleteContact(contact);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setDeletingId('');
     }
   }
 
@@ -781,7 +801,7 @@ function ContactList({
           onChange={(event) => setUsername(event.target.value)}
           placeholder="输入用户名添加联系人"
         />
-        <Button title="添加联系人" disabled={busy} className="h-10 px-0">+</Button>
+        <Button type="submit" title="添加联系人" disabled={busy} className="h-10 px-0">+</Button>
       </form>
       {error && <div className="inline-error">{error}</div>}
 
@@ -789,18 +809,33 @@ function ContactList({
       <div className="contact-list">
         {contacts.length === 0 && <div className="empty-list">暂无联系人</div>}
         {contacts.map((contact) => (
-          <button
+          <div
             key={contact.id}
             className={`contact-item ${selectedId === contact.id ? 'selected' : ''}`}
-            onClick={() => onSelect(contact)}
           >
-            <Avatar user={contact} size="small" />
-            <div className="contact-copy">
-              <strong>{contact.displayName}</strong>
-              <span>{contact.lastMessage || `@${contact.username}`}</span>
-            </div>
-            {contact.unreadCount > 0 && <span className="unread-badge">{contact.unreadCount > 99 ? '99+' : contact.unreadCount}</span>}
-          </button>
+            <button
+              type="button"
+              className="contact-select"
+              onClick={() => onSelect(contact)}
+            >
+              <Avatar user={contact} size="small" />
+              <div className="contact-copy">
+                <strong>{contact.displayName}</strong>
+                <span>{contact.lastMessage || `@${contact.username}`}</span>
+              </div>
+              {contact.unreadCount > 0 && <span className="unread-badge">{contact.unreadCount > 99 ? '99+' : contact.unreadCount}</span>}
+            </button>
+            <button
+              type="button"
+              className="contact-delete"
+              onClick={(event) => deleteContact(event, contact)}
+              disabled={deletingId === contact.id}
+              title="删除联系人"
+              aria-label={`删除 ${contact.displayName}`}
+            >
+              x
+            </button>
+          </div>
         ))}
       </div>
     </aside>
@@ -1870,6 +1905,15 @@ export default function App() {
         }}
         onAddContact={async (username) => {
           await api.addContact(username);
+          await refreshContacts();
+        }}
+        onDeleteContact={async (contact) => {
+          await api.deleteContact(contact.id);
+          if (selectedId === contact.id) {
+            setSelected(null);
+            setMessages([]);
+            setHasOlderMessages(false);
+          }
           await refreshContacts();
         }}
       />
