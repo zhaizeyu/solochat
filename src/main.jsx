@@ -1100,8 +1100,7 @@ function ChatWindow({
           <span>消息已撤回</span>
         ) : quotedSticker ? (
           <span className="quote-sticker-line">
-            <img src={quoted.sticker.imageDataUrl} alt={quoted.sticker.name || '表情包'} />
-            <span>{quoted.sticker.name || '表情包'}</span>
+            <img src={quoted.sticker.imageDataUrl} alt="表情包" />
           </span>
         ) : (
           <span>{renderTwemojiText(quoted.text)}</span>

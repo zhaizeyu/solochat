@@ -95,3 +95,30 @@ test('recall rejects messages outside the recall window', { skip: !hasDatabase }
   });
   assert.equal(recalled.status, 400);
 });
+
+test('quoted sticker previews do not persist long sticker names', { skip: !hasDatabase }, async () => {
+  const alice = await register('msg_sticker_a');
+  const bob = await register('msg_sticker_b');
+  await addContact(alice, bob.username);
+
+  const created = await call(state.handleStickers, {
+    method: 'POST',
+    path: '/api/stickers',
+    user: alice,
+    body: {
+      name: 'a very long screenshot generated description that should not appear after the quoted sticker image',
+      imageDataUrl: `${process.env.R2_PUBLIC_BASE_URL.replace(/\/+$/, '')}/stickers/quoted-long-name.png`
+    }
+  });
+  assert.equal(created.status, 201);
+
+  const stickerMessage = await sendMessage(alice, bob.id, '', {
+    kind: 'sticker',
+    stickerId: created.body.sticker.id
+  });
+  const reply = await sendMessage(bob, alice.id, 'replying', { quoteId: stickerMessage.id });
+
+  assert.equal(reply.quote.kind, 'sticker');
+  assert.equal(reply.quote.text, '[表情包]');
+  assert.equal(reply.quote.sticker.name, '表情包');
+});

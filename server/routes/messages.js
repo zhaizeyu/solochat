@@ -176,7 +176,7 @@ export async function handleMessages(req, res, pathName, user, url) {
         sticker: quoted.kind === 'sticker' && quoted.sticker
           ? {
               id: quoted.sticker.id,
-              name: quoted.sticker.name,
+              name: '表情包',
               imageDataUrl: quoted.sticker.imageDataUrl
             }
           : null,
