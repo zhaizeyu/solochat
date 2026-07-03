@@ -281,6 +281,7 @@ function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMomen
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState({ text: '', happenedAt: new Date().toISOString().slice(0, 10), imageDataUrl: '' });
   const [editingId, setEditingId] = useState('');
+  const [expandedMomentId, setExpandedMomentId] = useState('');
   const [editDraft, setEditDraft] = useState({ text: '', happenedAt: '', imageDataUrl: '' });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -321,6 +322,7 @@ function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMomen
 
   function startEdit(moment) {
     setEditingId(moment.id);
+    setExpandedMomentId(moment.id);
     setEditDraft({
       text: moment.text,
       happenedAt: moment.happenedAt || new Date().toISOString().slice(0, 10),
@@ -357,6 +359,7 @@ function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMomen
     try {
       await onDeleteMoment(moment.id);
       if (editingId === moment.id) setEditingId('');
+      if (expandedMomentId === moment.id) setExpandedMomentId('');
     } catch (err) {
       setError(err.message);
     } finally {
@@ -420,8 +423,9 @@ function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMomen
       <div className="planner-drawer-list moment-list">
         {moments.map((moment) => {
           const editing = editingId === moment.id;
+          const expanded = expandedMomentId === moment.id;
           return (
-            <article className="moment-card" key={moment.id}>
+            <article className={cls('moment-card', expanded && 'expanded')} key={moment.id}>
               {editing ? (
                 <form className="moment-edit-form" onSubmit={saveEdit}>
                   <input
@@ -451,16 +455,25 @@ function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMomen
                 </form>
               ) : (
                 <>
-                  {moment.imageDataUrl && <img className="moment-image" src={moment.imageDataUrl} alt="回忆图片" />}
-                  <div className="moment-card-body">
-                    <time dateTime={moment.happenedAt}>{moment.happenedAt}</time>
-                    <p>{renderTwemojiText(moment.text)}</p>
-                    <span>{moment.authorName || (moment.authorId === self.id ? self.displayName : contact.displayName)}</span>
-                  </div>
-                  <div className="moment-card-actions">
-                    <button type="button" onClick={() => startEdit(moment)}>编辑</button>
-                    <button type="button" className="planner-delete-button" onClick={() => removeMoment(moment)}>删除</button>
-                  </div>
+                  <button
+                    type="button"
+                    className="moment-card-main"
+                    onClick={() => setExpandedMomentId(expanded ? '' : moment.id)}
+                    aria-expanded={expanded}
+                  >
+                    {moment.imageDataUrl && <img className="moment-image" src={moment.imageDataUrl} alt="回忆图片" />}
+                    <span className="moment-card-body">
+                      <time dateTime={moment.happenedAt}>{moment.happenedAt}</time>
+                      <span className="moment-card-text">{renderTwemojiText(moment.text)}</span>
+                      <span>{moment.authorName || (moment.authorId === self.id ? self.displayName : contact.displayName)}</span>
+                    </span>
+                  </button>
+                  {expanded && (
+                    <div className="moment-card-actions">
+                      <button type="button" onClick={() => startEdit(moment)}>编辑</button>
+                      <button type="button" className="planner-delete-button" onClick={() => removeMoment(moment)}>删除</button>
+                    </div>
+                  )}
                 </>
               )}
             </article>

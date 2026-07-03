@@ -1696,6 +1696,22 @@ textarea:focus {
   box-shadow: var(--shadow-tight);
 }
 
+.moment-card.expanded {
+  border-color: rgba(18, 184, 134, 0.3);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.moment-card-main {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  padding: 0;
+  text-align: left;
+}
+
 .moment-image {
   width: 100%;
   aspect-ratio: 16 / 10;
@@ -1716,7 +1732,7 @@ textarea:focus {
   font-weight: 900;
 }
 
-.moment-card-body p {
+.moment-card-text {
   overflow-wrap: anywhere;
   color: var(--ink);
   font-size: 14px;
