@@ -7,6 +7,7 @@ import { handleAdmin } from './routes/admin.js';
 import { handleCurrentUser, handlePublicAuth } from './routes/auth-users.js';
 import { handleContacts } from './routes/contacts.js';
 import { handleMessages } from './routes/messages.js';
+import { handleMoments } from './routes/moments.js';
 import { handlePlanner } from './routes/planner.js';
 import { handleStickers } from './routes/stickers.js';
 import { handleLocalUploadRequest, syncR2ImagesToLocal } from './uploads.js';
@@ -34,6 +35,7 @@ async function handleApi(req, res) {
   if (await handleStickers(req, res, pathName, user)) return;
   if (await handleContacts(req, res, pathName, user)) return;
   if (await handlePlanner(req, res, pathName, user)) return;
+  if (await handleMoments(req, res, pathName, user)) return;
   if (await handleMessages(req, res, pathName, user, url)) return;
 
   return json(res, 404, { message: '接口不存在' });

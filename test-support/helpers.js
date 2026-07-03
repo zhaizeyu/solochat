@@ -80,6 +80,7 @@ before(async () => {
     authModule,
     contactsModule,
     messagesModule,
+    momentsModule,
     plannerModule,
     stickersModule,
     adminModule,
@@ -89,6 +90,7 @@ before(async () => {
     import('../server/routes/auth-users.js'),
     import('../server/routes/contacts.js'),
     import('../server/routes/messages.js'),
+    import('../server/routes/moments.js'),
     import('../server/routes/planner.js'),
     import('../server/routes/stickers.js'),
     import('../server/routes/admin.js'),
@@ -100,6 +102,7 @@ before(async () => {
     ...authModule,
     ...contactsModule,
     ...messagesModule,
+    ...momentsModule,
     ...plannerModule,
     ...stickersModule,
     ...adminModule,
@@ -198,6 +201,17 @@ export async function addPlannerTask(user, contactId, plan, options = {}) {
   });
   assert.equal(result.status, 201);
   return result.body.task;
+}
+
+export async function addMoment(user, contactId, text, options = {}) {
+  const result = await call(state.handleMoments, {
+    method: 'POST',
+    path: `/api/moments/${contactId}`,
+    user,
+    body: { text, ...options }
+  });
+  assert.equal(result.status, 201);
+  return result.body.moments[0];
 }
 
 export async function count(sql, ...params) {

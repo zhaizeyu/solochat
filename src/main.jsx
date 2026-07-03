@@ -277,6 +277,201 @@ function CouplePlannerPanel({ tasks, selfLabel = '你', contactLabel = 'Ta', onA
   );
 }
 
+function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMoment, onDeleteMoment, onClose }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [draft, setDraft] = useState({ text: '', happenedAt: new Date().toISOString().slice(0, 10), imageDataUrl: '' });
+  const [editingId, setEditingId] = useState('');
+  const [editDraft, setEditDraft] = useState({ text: '', happenedAt: '', imageDataUrl: '' });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  async function chooseDraftImage(event, setter) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const imageDataUrl = await readImageFile(file);
+      setter((current) => ({ ...current, imageDataUrl }));
+      setError('');
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function submitMoment(event) {
+    event.preventDefault();
+    const text = draft.text.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onAddMoment({
+        text,
+        happenedAt: draft.happenedAt,
+        imageDataUrl: draft.imageDataUrl
+      });
+      setDraft({ text: '', happenedAt: new Date().toISOString().slice(0, 10), imageDataUrl: '' });
+      setFormOpen(false);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startEdit(moment) {
+    setEditingId(moment.id);
+    setEditDraft({
+      text: moment.text,
+      happenedAt: moment.happenedAt || new Date().toISOString().slice(0, 10),
+      imageDataUrl: moment.imageDataUrl || ''
+    });
+    setError('');
+  }
+
+  async function saveEdit(event) {
+    event.preventDefault();
+    const text = editDraft.text.trim();
+    if (!text || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onUpdateMoment(editingId, {
+        text,
+        happenedAt: editDraft.happenedAt,
+        imageDataUrl: editDraft.imageDataUrl
+      });
+      setEditingId('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeMoment(moment) {
+    const ok = window.confirm('确定删除这条回忆吗？');
+    if (!ok) return;
+    setBusy(true);
+    setError('');
+    try {
+      await onDeleteMoment(moment.id);
+      if (editingId === moment.id) setEditingId('');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <aside className="planner-drawer moments-drawer" aria-label="两个人的回忆">
+      <div className="planner-drawer-header">
+        <div className="planner-avatar-pair" aria-hidden="true">
+          <span>你</span>
+          <span>{contact.displayName.slice(0, 1) || 'Ta'}</span>
+        </div>
+        <div className="planner-drawer-title">
+          <h2>回忆</h2>
+          <p>共 {moments.length} 条，由 {self.displayName} 和 {contact.displayName} 共同记录</p>
+        </div>
+        {onClose && (
+          <button type="button" className="planner-close-button" onClick={onClose} aria-label="收回回忆">
+            收回
+          </button>
+        )}
+      </div>
+
+      <div className="planner-drawer-controls">
+        <button type="button" className="planner-add-toggle" onClick={() => setFormOpen((open) => !open)}>
+          {formOpen ? '收起记录' : '+ 记录回忆'}
+        </button>
+        {formOpen && (
+          <form className="moment-form" onSubmit={submitMoment}>
+            <input
+              type="date"
+              value={draft.happenedAt}
+              onChange={(event) => setDraft({ ...draft, happenedAt: event.target.value })}
+            />
+            <textarea
+              value={draft.text}
+              onChange={(event) => setDraft({ ...draft, text: event.target.value })}
+              maxLength={1000}
+              placeholder="写下这一天发生了什么"
+            />
+            {draft.imageDataUrl && (
+              <div className="moment-preview">
+                <img src={draft.imageDataUrl} alt="回忆预览" />
+                <button type="button" onClick={() => setDraft({ ...draft, imageDataUrl: '' })}>移除图片</button>
+              </div>
+            )}
+            <div className="moment-form-actions">
+              <label>
+                图片
+                <input type="file" accept="image/*" onChange={(event) => chooseDraftImage(event, setDraft)} disabled={busy} />
+              </label>
+              <button type="submit" disabled={busy || !draft.text.trim()}>发布</button>
+            </div>
+          </form>
+        )}
+        {error && <div className="inline-error">{error}</div>}
+      </div>
+
+      <div className="planner-drawer-list moment-list">
+        {moments.map((moment) => {
+          const editing = editingId === moment.id;
+          return (
+            <article className="moment-card" key={moment.id}>
+              {editing ? (
+                <form className="moment-edit-form" onSubmit={saveEdit}>
+                  <input
+                    type="date"
+                    value={editDraft.happenedAt}
+                    onChange={(event) => setEditDraft({ ...editDraft, happenedAt: event.target.value })}
+                  />
+                  <textarea
+                    value={editDraft.text}
+                    onChange={(event) => setEditDraft({ ...editDraft, text: event.target.value })}
+                    maxLength={1000}
+                  />
+                  {editDraft.imageDataUrl && (
+                    <div className="moment-preview">
+                      <img src={editDraft.imageDataUrl} alt="回忆预览" />
+                      <button type="button" onClick={() => setEditDraft({ ...editDraft, imageDataUrl: '' })}>移除图片</button>
+                    </div>
+                  )}
+                  <div className="moment-form-actions">
+                    <label>
+                      换图
+                      <input type="file" accept="image/*" onChange={(event) => chooseDraftImage(event, setEditDraft)} disabled={busy} />
+                    </label>
+                    <button type="submit" disabled={busy || !editDraft.text.trim()}>保存</button>
+                    <button type="button" onClick={() => setEditingId('')} disabled={busy}>取消</button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  {moment.imageDataUrl && <img className="moment-image" src={moment.imageDataUrl} alt="回忆图片" />}
+                  <div className="moment-card-body">
+                    <time dateTime={moment.happenedAt}>{moment.happenedAt}</time>
+                    <p>{renderTwemojiText(moment.text)}</p>
+                    <span>{moment.authorName || (moment.authorId === self.id ? self.displayName : contact.displayName)}</span>
+                  </div>
+                  <div className="moment-card-actions">
+                    <button type="button" onClick={() => startEdit(moment)}>编辑</button>
+                    <button type="button" className="planner-delete-button" onClick={() => removeMoment(moment)}>删除</button>
+                  </div>
+                </>
+              )}
+            </article>
+          );
+        })}
+        {moments.length === 0 && <div className="planner-drawer-empty">还没有回忆。</div>}
+      </div>
+    </aside>
+  );
+}
+
 function renderTwemojiText(text) {
   if (!text) return '';
   const nodes = [];
@@ -382,6 +577,24 @@ const api = {
   },
   deletePlannerTask(taskId) {
     return this.request(`/api/planner/tasks/${taskId}`, { method: 'DELETE' });
+  },
+  moments(contactId) {
+    return this.request(`/api/moments/${contactId}`);
+  },
+  addMoment(contactId, payload) {
+    return this.request(`/api/moments/${contactId}`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+  updateMoment(momentId, payload) {
+    return this.request(`/api/moments/items/${momentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload)
+    });
+  },
+  deleteMoment(momentId) {
+    return this.request(`/api/moments/items/${momentId}`, { method: 'DELETE' });
   },
   updateProfile(displayName) {
     return this.request('/api/me', {
@@ -893,10 +1106,11 @@ function ChatWindow({
   const [stickerManage, setStickerManage] = useState(false);
   const [selectedStickerIds, setSelectedStickerIds] = useState([]);
   const [savingStickerMessageIds, setSavingStickerMessageIds] = useState([]);
-  const [plannerOpen, setPlannerOpen] = useState(false);
+  const [sideTool, setSideTool] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState('chat');
   const [plannerTasks, setPlannerTasks] = useState([]);
+  const [moments, setMoments] = useState([]);
   const bottomRef = useRef(null);
   const streamRef = useRef(null);
   const textareaRef = useRef(null);
@@ -936,6 +1150,7 @@ function ChatWindow({
     setQuote(null);
     setProfileOpen(false);
     setMobilePane('chat');
+    setSideTool(null);
   }, [contact?.id]);
 
   useEffect(() => {
@@ -969,6 +1184,25 @@ function ChatWindow({
     };
   }, [contact?.id, self?.id]);
 
+  useEffect(() => {
+    if (!contact || !self) {
+      setMoments([]);
+      return;
+    }
+    let active = true;
+    setMoments([]);
+    api.moments(contact.id)
+      .then((data) => {
+        if (active) setMoments(data.moments);
+      })
+      .catch((err) => {
+        if (active) alert(err.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [contact?.id, self?.id]);
+
   function replacePlannerTask(task) {
     setPlannerTasks((current) => current.map((item) => (item.id === task.id ? task : item)));
   }
@@ -978,7 +1212,7 @@ function ChatWindow({
     try {
       const data = await api.addPlannerTask(contact.id, task);
       setPlannerTasks((current) => [data.task, ...current.filter((item) => item.id !== data.task.id)]);
-      setPlannerOpen(true);
+      setSideTool('planner');
       setMobilePane('planner');
     } catch (err) {
       alert(err.message);
@@ -1007,6 +1241,24 @@ function ChatWindow({
     } catch (err) {
       alert(err.message);
     }
+  }
+
+  async function addMoment(payload) {
+    if (!contact) return;
+    const data = await api.addMoment(contact.id, payload);
+    setMoments(data.moments);
+    setSideTool('moments');
+    setMobilePane('moments');
+  }
+
+  async function updateMoment(momentId, payload) {
+    const data = await api.updateMoment(momentId, payload);
+    setMoments(data.moments);
+  }
+
+  async function deleteMoment(momentId) {
+    await api.deleteMoment(momentId);
+    setMoments((current) => current.filter((moment) => moment.id !== momentId));
   }
 
   async function submit(event) {
@@ -1226,8 +1478,8 @@ function ChatWindow({
   }
 
   const activePlannerCount = plannerTasks.filter((task) => !task.done).length;
-  function closePlanner() {
-    setPlannerOpen(false);
+  function closeSideTool() {
+    setSideTool(null);
     setMobilePane('chat');
   }
 
@@ -1240,14 +1492,33 @@ function ChatWindow({
         onAddTask={addPlannerTask}
         onUpdateTask={updatePlannerTask}
         onDeleteTask={deletePlannerTask}
-        onClose={closePlanner}
+        onClose={closeSideTool}
       />
     );
   }
 
+  function renderMoments() {
+    return (
+      <CoupleMomentsPanel
+        moments={moments}
+        self={self}
+        contact={contact}
+        onAddMoment={addMoment}
+        onUpdateMoment={updateMoment}
+        onDeleteMoment={deleteMoment}
+        onClose={closeSideTool}
+      />
+    );
+  }
+
+  function renderSideTool() {
+    if (sideTool === 'moments' || mobilePane === 'moments') return renderMoments();
+    return renderPlanner();
+  }
+
   return (
-    <section className={`chat-panel ${plannerOpen ? 'planner-open' : ''}`}>
-      <div className={`chat-core ${mobilePane === 'planner' ? 'mobile-planner-active' : ''}`}>
+    <section className={`chat-panel ${sideTool ? 'planner-open' : ''}`}>
+      <div className={`chat-core ${mobilePane !== 'chat' ? 'mobile-planner-active' : ''}`}>
         <header className="chat-header">
           <button type="button" className="mobile-back-button" onClick={onBack} aria-label="返回联系人">
             返回
@@ -1261,13 +1532,23 @@ function ChatWindow({
           </div>
           <button
             type="button"
-            className={`planner-header-button ${plannerOpen ? 'active' : ''}`}
+            className={`planner-header-button ${sideTool === 'planner' ? 'active' : ''}`}
             onClick={() => {
-              setPlannerOpen((open) => !open);
+              setSideTool((tool) => (tool === 'planner' ? null : 'planner'));
               setMobilePane('planner');
             }}
           >
             待办 {activePlannerCount}
+          </button>
+          <button
+            type="button"
+            className={`planner-header-button ${sideTool === 'moments' ? 'active' : ''}`}
+            onClick={() => {
+              setSideTool((tool) => (tool === 'moments' ? null : 'moments'));
+              setMobilePane('moments');
+            }}
+          >
+            回忆 {moments.length}
           </button>
         </header>
         {profileOpen && (
@@ -1303,15 +1584,25 @@ function ChatWindow({
             type="button"
             className={mobilePane === 'planner' ? 'active' : ''}
             onClick={() => {
-              setPlannerOpen(true);
+              setSideTool('planner');
               setMobilePane('planner');
             }}
           >
             待办 {activePlannerCount}
           </button>
+          <button
+            type="button"
+            className={mobilePane === 'moments' ? 'active' : ''}
+            onClick={() => {
+              setSideTool('moments');
+              setMobilePane('moments');
+            }}
+          >
+            回忆 {moments.length}
+          </button>
         </div>
 
-        <div className="chat-mobile-planner">{renderPlanner()}</div>
+        <div className="chat-mobile-planner">{renderSideTool()}</div>
 
         <div className="message-stream" ref={streamRef} onScroll={updateScrollPosition} onWheel={handleWheel}>
           {(hasOlderMessages || loadingOlderMessages) && (
@@ -1498,7 +1789,7 @@ function ChatWindow({
           )}
         </form>
       </div>
-      <div className="chat-desktop-planner">{renderPlanner()}</div>
+      <div className="chat-desktop-planner">{sideTool === 'moments' ? renderMoments() : renderPlanner()}</div>
     </section>
   );
 }

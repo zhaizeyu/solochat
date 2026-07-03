@@ -107,6 +107,22 @@ export function rowToPlannerTask(row) {
   };
 }
 
+export function rowToMoment(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    conversationId: row.conversationId,
+    authorId: row.authorId,
+    authorName: row.authorName || '',
+    text: row.text || '',
+    happenedAt: row.happenedAt,
+    imageDataUrl: row.imagePath || '',
+    imagePath: row.imagePath || null,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  };
+}
+
 export function userSelect(prefix = '') {
   return `
     ${prefix}id AS id,
@@ -163,6 +179,19 @@ export function plannerTaskSelect(prefix = '') {
   `;
 }
 
+export function momentSelect(prefix = '') {
+  return `
+    ${prefix}id AS id,
+    ${prefix}conversation_id AS "conversationId",
+    ${prefix}author_id AS "authorId",
+    ${prefix}text AS text,
+    ${prefix}happened_at AS "happenedAt",
+    ${prefix}image_path AS "imagePath",
+    ${prefix}created_at AS "createdAt",
+    ${prefix}updated_at AS "updatedAt"
+  `;
+}
+
 export function sanitizeUser(user) {
   return {
     id: user.id,
@@ -209,6 +238,14 @@ export function messageForClient(message) {
     ...message,
     sticker: stickerForClient(message.sticker),
     quote: quoteForClient(message.quote)
+  };
+}
+
+export function momentForClient(moment) {
+  if (!moment) return null;
+  return {
+    ...moment,
+    imageDataUrl: storedImageUrlForClient(moment.imageDataUrl || '')
   };
 }
 
@@ -330,6 +367,21 @@ async function createSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_planner_confirmations_user
       ON planner_confirmations(user_id);
+
+    CREATE TABLE IF NOT EXISTS couple_moments (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      author_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      happened_at TEXT NOT NULL,
+      image_path TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_couple_moments_conversation_created
+      ON couple_moments(conversation_id, created_at DESC);
   `);
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT \'\'');
 }
@@ -503,4 +555,31 @@ export async function getPlannerTaskResponse(taskId, selfId, contactId) {
       ON contact_confirmed.task_id = t.id AND contact_confirmed.user_id = ?
     WHERE t.id = ? AND t.conversation_id = ?
   `).get(selfId, contactId, taskId, conversationId));
+}
+
+export async function getMomentById(momentId) {
+  return rowToMoment(await getDb().prepare(`SELECT ${momentSelect()} FROM couple_moments WHERE id = ? AND deleted_at IS NULL`).get(momentId));
+}
+
+export async function getMomentForUser(momentId, user) {
+  const moment = await getMomentById(momentId);
+  if (!moment) return null;
+  const participantIds = String(moment.conversationId || '').split(':');
+  const contactId = participantIds.find((id) => id && id !== user.id);
+  const target = contactId ? await getUserById(contactId) : null;
+  if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) return null;
+  return { moment, target };
+}
+
+export async function getMoments(conversationId) {
+  const rows = await getDb().prepare(`
+    SELECT
+      ${momentSelect('m.')},
+      u.display_name AS "authorName"
+    FROM couple_moments m
+    JOIN users u ON u.id = m.author_id
+    WHERE m.conversation_id = ? AND m.deleted_at IS NULL
+    ORDER BY m.happened_at DESC, m.created_at DESC
+  `).all(conversationId);
+  return rows.map(rowToMoment).map(momentForClient);
 }

@@ -1597,6 +1597,151 @@ textarea:focus {
   font-size: 13px;
 }
 
+.moments-drawer {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.moment-form,
+.moment-edit-form {
+  display: grid;
+  gap: 9px;
+}
+
+.moment-form input[type='date'],
+.moment-edit-form input[type='date'] {
+  height: 38px;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 10px;
+}
+
+.moment-form textarea,
+.moment-edit-form textarea {
+  min-height: 86px;
+  resize: vertical;
+  border: 1px solid var(--hairline-soft);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 10px;
+  line-height: 1.5;
+}
+
+.moment-preview {
+  display: grid;
+  gap: 7px;
+}
+
+.moment-preview img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid rgba(81, 108, 102, 0.14);
+}
+
+.moment-preview button {
+  justify-self: start;
+  min-height: 30px;
+  border: 1px solid #f1c5bd;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 0 10px;
+}
+
+.moment-form-actions,
+.moment-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.moment-form-actions label,
+.moment-form-actions button,
+.moment-card-actions button {
+  min-height: 32px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid rgba(18, 184, 134, 0.22);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 0 10px;
+}
+
+.moment-form-actions input[type='file'] {
+  display: none;
+}
+
+.moment-form-actions button:disabled {
+  opacity: 0.58;
+}
+
+.moment-list {
+  gap: 10px;
+}
+
+.moment-card {
+  overflow: hidden;
+  border: 1px solid rgba(81, 108, 102, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-tight);
+}
+
+.moment-image {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  display: block;
+  background: rgba(18, 184, 134, 0.08);
+}
+
+.moment-card-body {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+}
+
+.moment-card-body time {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.moment-card-body p {
+  overflow-wrap: anywhere;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.moment-card-body span {
+  color: var(--ink-subtle);
+  font-size: 12px;
+}
+
+.moment-card-actions {
+  padding: 0 12px 12px;
+}
+
+.moment-card-actions .planner-delete-button {
+  border-color: #f1c5bd;
+  color: var(--danger);
+}
+
+.moment-edit-form {
+  padding: 12px;
+}
+
 .chat-empty {
   display: grid;
   align-content: center;
@@ -1878,7 +2023,7 @@ textarea:focus {
 
   .mobile-chat-tabs {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
     padding: 8px 12px;
     background: rgba(255, 255, 255, 0.72);
