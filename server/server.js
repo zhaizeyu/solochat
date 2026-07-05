@@ -1,6 +1,8 @@
 import http from 'node:http';
+import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 import next from 'next';
-import { assertRuntimeConfig, host, port } from './config.js';
+import { assertRuntimeConfig, host, port, rootDir } from './config.js';
 import { getAuthUser, openDb } from './db.js';
 import { json } from './http-utils.js';
 import { handleAdmin } from './routes/admin.js';
@@ -15,6 +17,44 @@ import { handleLocalUploadRequest, syncR2ImagesToLocal } from './uploads.js';
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
 const handleNext = app.getRequestHandler();
+const chunksDir = path.join(rootDir, '.next', 'static', 'chunks');
+
+function getLatestCssChunk() {
+  try {
+    return readdirSync(chunksDir)
+      .filter((fileName) => fileName.endsWith('.css'))
+      .map((fileName) => {
+        const filePath = path.join(chunksDir, fileName);
+        return { filePath, mtimeMs: statSync(filePath).mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs)[0]?.filePath;
+  } catch {
+    return '';
+  }
+}
+
+function handleCssChunkRequest(req, res, pathName) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  if (!pathName.startsWith('/_next/static/chunks/') || !pathName.endsWith('.css')) return false;
+
+  const requestedPath = path.join(chunksDir, path.basename(pathName));
+  const relativePath = path.relative(chunksDir, requestedPath);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return false;
+
+  const cssPath = existsSync(requestedPath) ? requestedPath : getLatestCssChunk();
+  if (!cssPath) return false;
+
+  res.writeHead(200, {
+    'content-type': 'text/css; charset=utf-8',
+    'cache-control': existsSync(requestedPath) ? 'public, max-age=31536000, immutable' : 'no-store'
+  });
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  createReadStream(cssPath).pipe(res);
+  return true;
+}
 
 async function handleApi(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -52,6 +92,9 @@ await app.prepare();
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    if (handleCssChunkRequest(req, res, url.pathname)) {
+      return;
+    }
     if (handleLocalUploadRequest(req, res, url.pathname)) {
       return;
     }

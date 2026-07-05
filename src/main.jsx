@@ -17,6 +17,7 @@ const bubblePresets = [
 ];
 
 const emojiMatcher = /(?:[\u{1F1E6}-\u{1F1FF}]{2}|[#*0-9]\uFE0F?\u20E3|\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\uFE0E)?(?:\p{Emoji_Modifier})?)*)/gu;
+const momentImageMaxBytes = 3 * 1024 * 1024;
 const emojiGroups = [
   {
     id: 'smileys',
@@ -291,7 +292,7 @@ function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMomen
     event.target.value = '';
     if (!file) return;
     try {
-      const imageDataUrl = await readImageFile(file);
+      const imageDataUrl = await readMomentImageFile(file);
       setter((current) => ({ ...current, imageDataUrl }));
       setError('');
     } catch (err) {
@@ -455,19 +456,29 @@ function CoupleMomentsPanel({ moments, self, contact, onAddMoment, onUpdateMomen
                 </form>
               ) : (
                 <>
-                  <button
-                    type="button"
-                    className="moment-card-main"
-                    onClick={() => setExpandedMomentId(expanded ? '' : moment.id)}
-                    aria-expanded={expanded}
-                  >
-                    {moment.imageDataUrl && <img className="moment-image" src={moment.imageDataUrl} alt="回忆图片" />}
-                    <span className="moment-card-body">
+                  <div className={cls('moment-card-main', !moment.imageDataUrl && 'no-image')}>
+                    {moment.imageDataUrl && (
+                      <button
+                        type="button"
+                        className="moment-image-button"
+                        onClick={() => setExpandedMomentId(expanded ? '' : moment.id)}
+                        aria-label={expanded ? '收起回忆操作' : '展开回忆操作'}
+                        aria-expanded={expanded}
+                      >
+                        <img className="moment-image" src={moment.imageDataUrl} alt="回忆图片" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="moment-card-copy"
+                      onClick={() => setExpandedMomentId(expanded ? '' : moment.id)}
+                      aria-expanded={expanded}
+                    >
                       <time dateTime={moment.happenedAt}>{moment.happenedAt}</time>
                       <span className="moment-card-text">{renderTwemojiText(moment.text)}</span>
-                      <span>{moment.authorName || (moment.authorId === self.id ? self.displayName : contact.displayName)}</span>
-                    </span>
-                  </button>
+                      <em>{moment.authorName || (moment.authorId === self.id ? self.displayName : contact.displayName)}</em>
+                    </button>
+                  </div>
                   {expanded && (
                     <div className="moment-card-actions">
                       <button type="button" onClick={() => startEdit(moment)}>编辑</button>
@@ -673,6 +684,25 @@ function readImageFile(file) {
     reader.onerror = () => reject(new Error('读取图片失败'));
     reader.readAsDataURL(file);
   });
+}
+
+function dataUrlForFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('读取图片失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function readMomentImageFile(file) {
+  if (!file?.type?.startsWith('image/')) {
+    throw new Error('请选择图片文件');
+  }
+  if (file.size > momentImageMaxBytes) {
+    throw new Error('回忆图片需为 3MB 以内');
+  }
+  return dataUrlForFile(file);
 }
 
 function Avatar({ user, size = '' }) {

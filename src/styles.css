@@ -303,6 +303,7 @@ textarea:focus {
   height: 100dvh;
   display: grid;
   grid-template-columns: 330px 1fr;
+  grid-template-rows: minmax(0, 1fr);
   background: linear-gradient(135deg, #eaf7f7 0%, #f7f2ec 100%);
   position: relative;
   overflow: hidden;
@@ -636,6 +637,7 @@ textarea:focus {
   position: relative;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 0);
   grid-template-rows: minmax(0, 1fr);
@@ -1356,11 +1358,20 @@ textarea:focus {
 }
 
 .chat-desktop-planner {
+  position: relative;
   grid-column: 2;
   grid-row: 1;
+  align-self: stretch;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  max-height: 100dvh;
   overflow: hidden;
+}
+
+.chat-desktop-planner > .planner-drawer {
+  position: absolute;
+  inset: 0;
 }
 
 .chat-panel:not(.planner-open) .chat-desktop-planner {
@@ -1369,18 +1380,27 @@ textarea:focus {
 
 .planner-drawer {
   height: 100%;
+  min-width: 0;
   min-height: 0;
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   border-left: 1px solid rgba(18, 184, 134, 0.16);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(234, 248, 245, 0.9)),
     var(--surface);
 }
 
+.planner-drawer-header,
+.planner-drawer-controls,
+.planner-filter-tabs {
+  flex: 0 0 auto;
+}
+
 .planner-drawer-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
   padding: 16px;
   border-bottom: 1px solid rgba(18, 184, 134, 0.14);
@@ -1425,6 +1445,9 @@ textarea:focus {
 .planner-drawer-controls {
   display: grid;
   gap: 10px;
+  max-height: min(42dvh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 12px 14px;
   border-bottom: 1px solid rgba(18, 184, 134, 0.12);
 }
@@ -1489,13 +1512,36 @@ textarea:focus {
 }
 
 .planner-drawer-list {
+  flex: 1 1 auto;
+  height: 0;
   min-height: 0;
-  overflow: auto;
+  max-height: 100%;
+  overflow-y: scroll;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: grid;
   align-content: start;
   gap: 8px;
   padding: 12px 14px 18px;
   scrollbar-gutter: stable;
+  scrollbar-color: rgba(18, 184, 134, 0.42) rgba(255, 255, 255, 0.45);
+  scrollbar-width: thin;
+}
+
+.planner-drawer-list::-webkit-scrollbar {
+  width: 10px;
+}
+
+.planner-drawer-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(18, 184, 134, 0.32);
+  background-clip: content-box;
+}
+
+.planner-drawer-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.45);
 }
 
 .planner-mini-task {
@@ -1597,10 +1643,6 @@ textarea:focus {
   font-size: 13px;
 }
 
-.moments-drawer {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
 .moment-form,
 .moment-edit-form {
   display: grid;
@@ -1685,11 +1727,19 @@ textarea:focus {
 }
 
 .moment-list {
+  flex: 1 1 auto;
+  height: 0;
+  min-height: 0;
+  overflow-y: scroll;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
 .moment-card {
-  overflow: hidden;
+  min-width: 0;
+  flex: 0 0 auto;
+  align-self: stretch;
   border: 1px solid rgba(81, 108, 102, 0.16);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.82);
@@ -1704,29 +1754,50 @@ textarea:focus {
 .moment-card-main {
   width: 100%;
   min-width: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
   display: grid;
+  grid-template-columns: 74px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  padding: 10px;
+}
+
+.moment-card-main.no-image {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.moment-image-button {
+  min-width: 0;
+  width: 74px;
+  height: 74px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(18, 184, 134, 0.08);
+  display: block;
+  overflow: hidden;
   padding: 0;
-  text-align: left;
+  flex-shrink: 0;
 }
 
 .moment-image {
   width: 100%;
-  aspect-ratio: 16 / 10;
+  height: 100%;
   object-fit: cover;
   display: block;
-  background: rgba(18, 184, 134, 0.08);
 }
 
-.moment-card-body {
+.moment-card-copy {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
   display: grid;
-  gap: 7px;
-  padding: 12px;
+  align-content: center;
+  gap: 5px;
+  padding: 0;
+  text-align: left;
 }
 
-.moment-card-body time {
+.moment-card-copy time {
   color: var(--accent);
   font-size: 12px;
   font-weight: 900;
@@ -1736,17 +1807,30 @@ textarea:focus {
   overflow-wrap: anywhere;
   color: var(--ink);
   font-size: 14px;
-  line-height: 1.55;
-  white-space: pre-wrap;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.moment-card-body span {
+.moment-card-copy em {
   color: var(--ink-subtle);
   font-size: 12px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .moment-card-actions {
-  padding: 0 12px 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 0 10px 10px 94px;
+}
+
+.moment-card-main.no-image + .moment-card-actions {
+  padding-left: 10px;
 }
 
 .moment-card-actions .planner-delete-button {
@@ -1940,6 +2024,7 @@ textarea:focus {
   width: 64px;
   height: 44px;
   flex: 0 0 auto;
+  overflow: hidden;
 }
 
 .planner-avatar-pair span {
@@ -2076,13 +2161,21 @@ textarea:focus {
   }
 
   .chat-core.mobile-planner-active .chat-mobile-planner {
-    display: block;
+    display: grid;
+    min-width: 0;
     min-height: 0;
+    height: 100%;
+    max-height: 100%;
     overflow: hidden;
   }
 
   .chat-mobile-planner .planner-drawer {
+    position: relative;
+    inset: auto;
     border-left: 0;
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
   }
 
   .chat-mobile-planner .planner-drawer-header {

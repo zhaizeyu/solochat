@@ -25,7 +25,7 @@ async function saveMomentImage(imageDataUrl, momentId) {
   if (!imageDataUrl) return null;
   const isStoredImage = isStoredImageUrl(imageDataUrl);
   if ((!isImageDataUrl(imageDataUrl) || imageDataUrl.length > maxImageDataUrlLength) && !isStoredImage) {
-    throw new Error('图片需为 700KB 以内的图片');
+    throw new Error('图片需为 3MB 以内的图片');
   }
   return isStoredImage
     ? r2PublicUrlForStoredImage(imageDataUrl)
