@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import next from 'next';
 import { assertRuntimeConfig, host, port, rootDir } from './config.js';
-import { getAuthUser, openDb } from './db.js';
+import { getAuthUser, getDb, openDb } from './db.js';
 import { json } from './http-utils.js';
 import { handleAdmin } from './routes/admin.js';
 import { handleCurrentUser, handlePublicAuth } from './routes/auth-users.js';
@@ -12,7 +12,7 @@ import { handleMessages } from './routes/messages.js';
 import { handleMoments } from './routes/moments.js';
 import { handlePlanner } from './routes/planner.js';
 import { handleStickers } from './routes/stickers.js';
-import { handleLocalUploadRequest, syncR2ImagesToLocal } from './uploads.js';
+import { handleLocalUploadRequest, syncR2ImagesToLocal, cleanupOrphanedMomentImages } from './uploads.js';
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
@@ -86,6 +86,14 @@ await openDb();
 const localSync = await syncR2ImagesToLocal();
 if (localSync.enabled) {
   console.log(`USE_LOCAL enabled: synced R2 images to local uploads (${localSync.downloaded} downloaded, ${localSync.skipped} skipped)`);
+}
+const orphanCleanup = await cleanupOrphanedMomentImages(getDb());
+if (orphanCleanup.orphaned.length) {
+  console.log(
+    `Cleaned orphaned moment images: ${orphanCleanup.deletedR2.length} from R2, ${orphanCleanup.deletedLocal.length} from local (${orphanCleanup.orphaned.length} found)`
+  );
+} else {
+  console.log('No orphaned moment images found');
 }
 await app.prepare();
 

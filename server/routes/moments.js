@@ -8,7 +8,14 @@ import {
   getUserById
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
-import { isStoredImageUrl, r2PublicUrlForStoredImage, saveImageDataUrl } from '../uploads.js';
+import {
+  deleteMomentImageVariants,
+  deleteStoredImage,
+  isStoredImageUrl,
+  objectKeyFromStoredImageUrl,
+  r2PublicUrlForStoredImage,
+  saveImageDataUrl
+} from '../uploads.js';
 import { conversationKey, isImageDataUrl } from '../utils.js';
 
 function normalizeMomentText(value) {
@@ -30,6 +37,26 @@ async function saveMomentImage(imageDataUrl, momentId) {
   return isStoredImage
     ? r2PublicUrlForStoredImage(imageDataUrl)
     : saveImageDataUrl(imageDataUrl, 'moments', momentId);
+}
+
+async function updateMomentImage(current, momentId, body) {
+  if (!Object.hasOwn(body, 'imageDataUrl')) {
+    return current.imagePath;
+  }
+
+  const previousPath = current.imagePath;
+  const nextPath = await saveMomentImage(String(body.imageDataUrl || ''), momentId);
+
+  if (!nextPath) {
+    await deleteMomentImageVariants(momentId);
+    return null;
+  }
+
+  if (previousPath && previousPath !== nextPath) {
+    await deleteStoredImage(previousPath);
+  }
+  await deleteMomentImageVariants(momentId, objectKeyFromStoredImageUrl(nextPath));
+  return nextPath;
 }
 
 export async function handleMoments(req, res, pathName, user) {
@@ -89,7 +116,7 @@ export async function handleMoments(req, res, pathName, user) {
     let imagePath = current.imagePath;
     if (Object.hasOwn(body, 'imageDataUrl')) {
       try {
-        imagePath = await saveMomentImage(String(body.imageDataUrl || ''), momentId);
+        imagePath = await updateMomentImage(current, momentId, body);
       } catch (error) {
         return json(res, 400, { message: error.message });
       }
@@ -111,6 +138,7 @@ export async function handleMoments(req, res, pathName, user) {
       return json(res, 404, { message: '回忆不存在' });
     }
     const now = new Date().toISOString();
+    await deleteMomentImageVariants(momentId);
     await db.prepare('UPDATE couple_moments SET deleted_at = ?, updated_at = ? WHERE id = ?')
       .run(now, now, momentId);
     return json(res, 200, { ok: true });

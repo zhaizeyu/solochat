@@ -1,7 +1,7 @@
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync } from 'node:fs';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { createReadStream, createWriteStream, existsSync, readdirSync } from 'node:fs';
+import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { localUploadsDir, localUploadsPublicPath, r2Config, useLocalUploads } from './config.js';
@@ -52,6 +52,12 @@ function safeDecodeURIComponent(value) {
 
 function isImageObjectKey(objectKey) {
   return ['.jpg', '.jpeg', '.png', '.gif', '.webp'].includes(path.extname(objectKey).toLowerCase());
+}
+
+const momentImageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+
+export function objectKeyFromStoredImageUrl(value) {
+  return objectKeyFromR2PublicUrl(value) || objectKeyFromLocalPublicUrl(value);
 }
 
 function objectKeyFromR2PublicUrl(value) {
@@ -214,6 +220,18 @@ export async function putR2Object(objectKey, buffer, contentType) {
   }
 }
 
+async function deleteR2Object(objectKey) {
+  const signed = r2SignedHeaders('DELETE', objectKey, '', '');
+  const response = await fetch(signed.url, {
+    method: 'DELETE',
+    headers: signed.headers
+  });
+  if (response.status === 404 || response.status === 204 || response.ok) {
+    return response.status !== 404;
+  }
+  throw new Error(`R2 删除失败: ${response.status} ${await response.text()}`);
+}
+
 async function getR2Object(objectKey) {
   const signed = r2SignedHeaders('GET', objectKey, '', '');
   const response = await fetch(signed.url, {
@@ -249,6 +267,139 @@ async function writeLocalUpload(objectKey, buffer) {
   const filePath = safeLocalUploadPath(objectKey);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, buffer);
+}
+
+async function deleteLocalUpload(objectKey) {
+  try {
+    await unlink(safeLocalUploadPath(objectKey));
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+}
+
+function momentImageObjectKeys(momentId) {
+  const safeId = String(momentId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+  return momentImageExtensions.map((ext) => `moments/${safeId}.${ext}`);
+}
+
+function listLocalImageKeysUnderPrefix(prefix) {
+  const dirPath = safeLocalUploadPath(prefix);
+  if (!existsSync(dirPath)) return [];
+
+  const keys = [];
+  for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
+    if (!entry.isFile()) continue;
+    const objectKey = `${prefix}/${entry.name}`;
+    if (isImageObjectKey(objectKey)) keys.push(objectKey);
+  }
+  return keys;
+}
+
+async function listAllR2ImageKeys(prefix) {
+  assertR2Config();
+  const keys = [];
+  let continuationToken = '';
+
+  do {
+    const page = await listR2Objects(continuationToken);
+    continuationToken = page.nextContinuationToken;
+    for (const objectKey of page.keys) {
+      if (objectKey.startsWith(`${prefix}/`) && isImageObjectKey(objectKey)) {
+        keys.push(objectKey);
+      }
+    }
+  } while (continuationToken);
+
+  return keys;
+}
+
+export async function deleteStoredImage(imagePath) {
+  const objectKey = objectKeyFromStoredImageUrl(imagePath);
+  if (!objectKey) return { r2: false, local: false, objectKey: null };
+
+  const r2 = await deleteR2Object(objectKey);
+  const local = useLocalUploads ? await deleteLocalUpload(objectKey) : false;
+  return { r2, local, objectKey };
+}
+
+export async function deleteMomentImageVariants(momentId, keepObjectKey = '') {
+  const keepKey = keepObjectKey || '';
+  const deleted = { r2: [], local: [] };
+
+  for (const objectKey of momentImageObjectKeys(momentId)) {
+    if (objectKey === keepKey) continue;
+    const result = await deleteStoredImage(r2PublicUrlForObjectKey(objectKey));
+    if (result.r2) deleted.r2.push(objectKey);
+    if (result.local) deleted.local.push(objectKey);
+  }
+
+  return deleted;
+}
+
+export async function findOrphanedMomentImageKeys(db) {
+  const activeRows = await db.prepare(`
+    SELECT image_path AS "imagePath"
+    FROM couple_moments
+    WHERE deleted_at IS NULL AND image_path IS NOT NULL AND image_path != ''
+  `).all();
+
+  const keepKeys = new Set();
+  for (const row of activeRows) {
+    const objectKey = objectKeyFromStoredImageUrl(row.imagePath);
+    if (objectKey?.startsWith('moments/')) keepKeys.add(objectKey);
+  }
+
+  const storedKeys = new Set();
+  for (const objectKey of listLocalImageKeysUnderPrefix('moments')) {
+    storedKeys.add(objectKey);
+  }
+  try {
+    for (const objectKey of await listAllR2ImageKeys('moments')) {
+      storedKeys.add(objectKey);
+    }
+  } catch (error) {
+    if (!useLocalUploads) throw error;
+  }
+
+  const orphaned = [...storedKeys].filter((objectKey) => !keepKeys.has(objectKey)).sort();
+  return { keepKeys: [...keepKeys].sort(), orphaned };
+}
+
+async function deleteOrphanObject(objectKey) {
+  let r2 = false;
+  let local = false;
+  try {
+    r2 = await deleteR2Object(objectKey);
+  } catch (error) {
+    if (!String(error.message || '').includes('404')) throw error;
+  }
+  try {
+    if (existsSync(safeLocalUploadPath(objectKey))) {
+      local = await deleteLocalUpload(objectKey);
+    }
+  } catch {
+    // ignore invalid local paths
+  }
+  return { r2, local };
+}
+
+export async function cleanupOrphanedMomentImages(db, { dryRun = false } = {}) {
+  const { keepKeys, orphaned } = await findOrphanedMomentImageKeys(db);
+  if (dryRun || orphaned.length === 0) {
+    return { dryRun, keepKeys, orphaned, deletedR2: [], deletedLocal: [] };
+  }
+
+  const deletedR2 = [];
+  const deletedLocal = [];
+  for (const objectKey of orphaned) {
+    const result = await deleteOrphanObject(objectKey);
+    if (result.r2) deletedR2.push(objectKey);
+    if (result.local) deletedLocal.push(objectKey);
+  }
+
+  return { dryRun, keepKeys, orphaned, deletedR2, deletedLocal };
 }
 
 export async function syncR2ImagesToLocal() {
