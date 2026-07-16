@@ -52,6 +52,8 @@ cp .env.example .env
 
 ```env
 DATABASE_URL=postgres://postgres:password@127.0.0.1:5432/solochat
+TEST_MODE=false
+TEST_DATABASE_URL=postgres://postgres:password@127.0.0.1:5433/postgres
 
 R2_ACCOUNT_ID=your-cloudflare-account-id
 R2_BUCKET=solochat
@@ -69,6 +71,7 @@ PORT=3101
 数据库也可以使用 `PGHOST`、`PGPORT`、`PGUSER`、`PGPASSWORD` 和 `PGDATABASE` 分项配置。若同时提供，`DATABASE_URL` 优先。
 
 > R2 配置目前是必填项。`USE_LOCAL=true` 会将 R2 图片镜像到本地，而不是替代 R2；本地目录默认为 `data/uploads`，可通过 `LOCAL_UPLOADS_DIR` 修改。
+> `TEST_MODE=true` 时会使用 `TEST_DATABASE_URL`，并且图片只保存到本地 `/uploads/...`，不会上传、同步或删除 R2 对象。
 
 ### 3. 启动应用
 
@@ -176,6 +179,6 @@ DEPLOY.md            Coolify 与 Docker 部署补充说明
 ## 数据与安全
 
 - 账号、会话、联系人、消息、表情和计划数据保存在 PostgreSQL 中。
-- 头像和表情图片保存在 R2；启用 `USE_LOCAL` 时会额外保留本地副本。
+- 头像和表情图片保存在 R2；启用 `USE_LOCAL` 时会额外保留本地副本。启用 `TEST_MODE` 时图片只保存在本地。
 - `.env`、数据库文件、上传文件和日志不应提交到版本库。
 - 生产部署前请设置高强度 `ADMIN_PASSWORD`，并妥善保护数据库与 R2 凭据。

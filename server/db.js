@@ -343,6 +343,95 @@ async function createSchema() {
     CREATE INDEX IF NOT EXISTS idx_messages_user
       ON messages(from_id, to_id);
 
+    CREATE TABLE IF NOT EXISTS secure_conversations (
+      conversation_id TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      status TEXT NOT NULL DEFAULT 'waiting_peer',
+      crypto_version INTEGER NOT NULL DEFAULT 1,
+      current_key_version INTEGER NOT NULL DEFAULT 1,
+      recovery_owner_user_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS user_wrapped_conversation_keys (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      wrapped_key TEXT NOT NULL,
+      wrap_algorithm TEXT NOT NULL,
+      wrap_iv TEXT,
+      kdf_algorithm TEXT NOT NULL,
+      kdf_salt TEXT NOT NULL,
+      kdf_parameters TEXT NOT NULL,
+      key_version INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (conversation_id, user_id, key_version)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_wrapped_conversation_keys_user
+      ON user_wrapped_conversation_keys(user_id, conversation_id);
+
+    CREATE TABLE IF NOT EXISTS recovery_wrapped_conversation_keys (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      wrapped_key TEXT NOT NULL,
+      wrap_algorithm TEXT NOT NULL,
+      wrap_iv TEXT,
+      recovery_version INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE (conversation_id, recovery_version)
+    );
+
+    CREATE TABLE IF NOT EXISTS secure_pairing_keys (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      created_by_user_id TEXT NOT NULL,
+      wrapped_key TEXT NOT NULL,
+      wrap_algorithm TEXT NOT NULL,
+      wrap_iv TEXT,
+      key_version INTEGER NOT NULL,
+      expires_at TEXT NOT NULL,
+      used_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_secure_pairing_keys_conversation
+      ON secure_pairing_keys(conversation_id, used_at, expires_at);
+
+    CREATE TABLE IF NOT EXISTS encrypted_messages (
+      message_id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      sender_id TEXT NOT NULL,
+      recipient_id TEXT NOT NULL,
+      ciphertext TEXT NOT NULL,
+      iv TEXT NOT NULL,
+      sequence_number INTEGER NOT NULL,
+      crypto_version INTEGER NOT NULL,
+      key_version INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      read_at TEXT,
+      recalled_at TEXT,
+      expires_at TEXT,
+      UNIQUE (conversation_id, sender_id, key_version, sequence_number)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_encrypted_messages_conversation_created
+      ON encrypted_messages(conversation_id, created_at);
+
+    CREATE INDEX IF NOT EXISTS idx_encrypted_messages_to_unread
+      ON encrypted_messages(recipient_id, read_at, recalled_at);
+
+    CREATE TABLE IF NOT EXISTS secure_audit_events (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS planner_tasks (
       id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,

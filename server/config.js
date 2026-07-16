@@ -26,6 +26,7 @@ loadEnvFile(path.join(rootDir, '.env'));
 
 export const port = Number(process.env.PORT || 3101);
 export const host = process.env.HOST || '0.0.0.0';
+export const testMode = String(process.env.TEST_MODE || 'false').toLowerCase() === 'true';
 
 function firstEnv(keys) {
   for (const key of keys) {
@@ -52,7 +53,9 @@ function buildDatabaseUrlFromParts() {
   return url.toString();
 }
 
-export const databaseUrl = firstEnv(['DATABASE_URL', 'POSTGRES_URL', 'POSTGRESQL_URL']) || buildDatabaseUrlFromParts();
+const primaryDatabaseUrl = firstEnv(['DATABASE_URL', 'POSTGRES_URL', 'POSTGRESQL_URL']) || buildDatabaseUrlFromParts();
+export const testDatabaseUrl = process.env.TEST_DATABASE_URL || '';
+export const databaseUrl = testMode ? testDatabaseUrl : primaryDatabaseUrl;
 export const r2Config = {
   accountId: process.env.R2_ACCOUNT_ID || '',
   bucket: process.env.R2_BUCKET || '',
@@ -61,7 +64,8 @@ export const r2Config = {
   endpoint: process.env.S3_API_ENDPOINT || (process.env.R2_ACCOUNT_ID ? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com` : ''),
   publicBaseUrl: process.env.R2_PUBLIC_BASE_URL || process.env.S3_API || ''
 };
-export const useLocalUploads = String(process.env.USE_LOCAL || 'false').toLowerCase() === 'true';
+export const useLocalUploads = testMode || String(process.env.USE_LOCAL || 'false').toLowerCase() === 'true';
+export const uploadToR2 = !testMode;
 export const localUploadsDir = process.env.LOCAL_UPLOADS_DIR || path.join(rootDir, 'data', 'uploads');
 export const localUploadsPublicPath = '/uploads';
 export const recallWindowMs = 8 * 60 * 1000;
@@ -93,14 +97,19 @@ function validateDatabaseUrl(value) {
 }
 
 export function assertRuntimeConfig() {
-  const missing = Object.entries({
-    DATABASE_URL: databaseUrl,
-    R2_BUCKET: r2Config.bucket,
-    R2_ACCESS_KEY_ID: r2Config.accessKeyId,
-    R2_SECRET_ACCESS_KEY: r2Config.secretAccessKey,
-    S3_API_ENDPOINT: r2Config.endpoint,
-    R2_PUBLIC_BASE_URL: r2Config.publicBaseUrl
-  }).filter(([, value]) => !value);
+  const required = {
+    [testMode ? 'TEST_DATABASE_URL' : 'DATABASE_URL']: databaseUrl
+  };
+  if (uploadToR2) {
+    Object.assign(required, {
+      R2_BUCKET: r2Config.bucket,
+      R2_ACCESS_KEY_ID: r2Config.accessKeyId,
+      R2_SECRET_ACCESS_KEY: r2Config.secretAccessKey,
+      S3_API_ENDPOINT: r2Config.endpoint,
+      R2_PUBLIC_BASE_URL: r2Config.publicBaseUrl
+    });
+  }
+  const missing = Object.entries(required).filter(([, value]) => !value);
   if (missing.length) {
     throw new Error(`环境变量缺失: ${missing.map(([key]) => key).join(', ')}`);
   }

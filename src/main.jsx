@@ -6,6 +6,30 @@ import { Input } from '../components/ui/input.jsx';
 import { Label } from '../components/ui/label.jsx';
 import { TabsList, TabsTrigger } from '../components/ui/tabs.jsx';
 import { Textarea } from '../components/ui/textarea.jsx';
+import {
+  assertSecureChatSupported,
+  base64,
+  clearPairingFragment,
+  defaultKdfParameters,
+  decryptMessage,
+  deriveChatKek,
+  derivePairingKek,
+  deriveRecoveryKek,
+  encodePairingFragment,
+  encryptMessage,
+  formatRecoveryCode,
+  generatePairingSecret,
+  generateRecoveryKey,
+  generateRootKey,
+  isSecureChatSupported,
+  makeConversationId,
+  parseRecoveryCode,
+  randomSalt,
+  readPairingFragment,
+  secureCryptoVersion,
+  unwrapRootKey,
+  wrapRootKey
+} from './secure-crypto.js';
 
 const bubblePresets = [
   { id: 'mint', name: '蓝绿色', start: '#1597ff', end: '#12b886', soft: '#eaf8f5', shadow: 'rgba(18, 184, 134, 0.18)' },
@@ -578,6 +602,40 @@ const api = {
   recallMessage(messageId) {
     return this.request(`/api/messages/${messageId}/recall`, { method: 'PATCH' });
   },
+  enableSecureConversation(payload) {
+    return this.request('/api/secure-conversations/enable', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  createSecurePairing(payload) {
+    return this.request('/api/secure-conversations/pairing/create', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  completeSecurePairing(payload) {
+    return this.request('/api/secure-conversations/pairing/complete', { method: 'POST', body: JSON.stringify(payload) });
+  },
+  secureKeyMaterial(conversationId) {
+    return this.request(`/api/secure-conversations/${encodeURIComponent(conversationId)}/key-material`);
+  },
+  updateSecureUserWrappedKey(conversationId, payload) {
+    return this.request(`/api/secure-conversations/${encodeURIComponent(conversationId)}/user-wrapped-key`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+  },
+  rotateSecureRecoveryKey(conversationId, payload) {
+    return this.request(`/api/secure-conversations/${encodeURIComponent(conversationId)}/recovery/rotate`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+  encryptedMessages(contactId, params = {}) {
+    const search = new URLSearchParams({ contactId });
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== undefined && value !== null && value !== '') search.set(key, value);
+    }
+    return this.request(`/api/messages/encrypted?${search}`);
+  },
+  sendEncryptedMessage(payload) {
+    return this.request('/api/messages/encrypted', { method: 'POST', body: JSON.stringify(payload) });
+  },
   plannerTasks(contactId) {
     return this.request(`/api/planner/${contactId}`);
   },
@@ -1139,6 +1197,15 @@ function ChatWindow({
   onAddSticker,
   onDeleteStickers,
   onRecall,
+  secureChat,
+  secureChatSupported,
+  onEnableSecureChat,
+  onUnlockSecureChat,
+  onLockSecureChat,
+  onCompleteSecurePairing,
+  onResetSecurePassword,
+  onRotateRecoveryKey,
+  onRecoverSecurePassword,
   onBack
 }) {
   const [text, setText] = useState('');
@@ -1150,6 +1217,7 @@ function ChatWindow({
   const [selectedStickerIds, setSelectedStickerIds] = useState([]);
   const [savingStickerMessageIds, setSavingStickerMessageIds] = useState([]);
   const [sideTool, setSideTool] = useState(null);
+  const [secureSettingsOpen, setSecureSettingsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState('chat');
   const [plannerTasks, setPlannerTasks] = useState([]);
@@ -1308,6 +1376,10 @@ function ChatWindow({
     event.preventDefault();
     const content = text.trim();
     if (!content || !contact) return;
+    if (secureChat?.status !== 'off' && !secureChat.unlocked) {
+      await onUnlockSecureChat?.();
+      return;
+    }
     const currentQuote = quote;
     setText('');
     setQuote(null);
@@ -1478,6 +1550,10 @@ function ChatWindow({
 
   async function sendSticker(sticker) {
     if (!contact) return;
+    if (secureChat?.status !== 'off') {
+      alert('安全聊天模式下暂不支持发送表情包。');
+      return;
+    }
     const currentQuote = quote;
     setQuote(null);
     setStickerOpen(false);
@@ -1559,6 +1635,64 @@ function ChatWindow({
     return renderPlanner();
   }
 
+  async function runSecureAction(action) {
+    try {
+      await action?.();
+    } catch (err) {
+      alert(err?.message || '安全聊天操作失败');
+    }
+  }
+
+  function renderSecureSettings() {
+    if (!secureSettingsOpen || !secureChat) return null;
+    const statusText = secureChat.status === 'enabled'
+      ? (secureChat.unlocked ? '已解锁' : '已锁定')
+      : secureChat.status === 'waiting_peer'
+        ? '等待对方加入'
+        : '未开启';
+    return (
+      <section className="secure-chat-settings" aria-label="安全聊天设置">
+        <div>
+          <strong>安全聊天状态：{statusText}</strong>
+          <p>安全聊天保护消息正文不以明文存储在服务器。使用公司设备或公司网络仍可能留下网站访问、屏幕、键盘或终端审计记录。</p>
+          {!secureChatSupported && (
+            <p className="secure-chat-warning">当前连接不是安全连接，无法开启或解锁安全聊天。请通过 HTTPS 访问本站。</p>
+          )}
+        </div>
+        <div className="secure-chat-actions">
+          {secureChat.status === 'off' && (
+            <Button type="button" variant="primary" onClick={() => runSecureAction(onEnableSecureChat)} disabled={!secureChatSupported}>开启安全聊天</Button>
+          )}
+          {secureChat.status !== 'off' && !secureChat.unlocked && (
+            <Button type="button" variant="primary" onClick={() => runSecureAction(onUnlockSecureChat)} disabled={!secureChatSupported}>解锁聊天</Button>
+          )}
+          {secureChat.status !== 'off' && secureChat.unlocked && (
+            <Button type="button" onClick={() => runSecureAction(onLockSecureChat)}>锁定安全聊天</Button>
+          )}
+          {secureChat.canCompletePairing && (
+            <Button type="button" variant="primary" onClick={() => runSecureAction(onCompleteSecurePairing)} disabled={!secureChatSupported}>完成安全配对</Button>
+          )}
+          {secureChat.status !== 'off' && !secureChat.unlocked && (
+            <Button type="button" onClick={() => runSecureAction(onRecoverSecurePassword)} disabled={!secureChatSupported}>使用恢复密钥恢复</Button>
+          )}
+          {secureChat.status !== 'off' && secureChat.unlocked && (
+            <>
+              <Button type="button" onClick={() => runSecureAction(onResetSecurePassword)}>重新设置聊天密码</Button>
+              <Button type="button" onClick={() => runSecureAction(onRotateRecoveryKey)}>更换恢复密钥</Button>
+            </>
+          )}
+        </div>
+        {secureChat.status !== 'off' && (
+          <dl className="secure-chat-details">
+            <div><dt>解锁方式</dt><dd>安全聊天密码</dd></div>
+            <div><dt>恢复密钥</dt><dd>{secureChat.recoveryOwnerUserId ? '已生成' : '未生成'}</dd></div>
+            <div><dt>恢复密钥拥有者</dt><dd>{secureChat.recoveryOwnerUserId === self.id ? '你' : secureChat.recoveryOwnerUserId ? '对方或创建者' : '无'}</dd></div>
+          </dl>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section className={`chat-panel ${sideTool ? 'planner-open' : ''}`}>
       <div className={`chat-core ${mobilePane !== 'chat' ? 'mobile-planner-active' : ''}`}>
@@ -1593,7 +1727,20 @@ function ChatWindow({
           >
             回忆 {moments.length}
           </button>
+          <button
+            type="button"
+            className={`planner-header-button ${secureSettingsOpen ? 'active' : ''}`}
+            onClick={() => setSecureSettingsOpen((open) => !open)}
+          >
+            安全
+          </button>
         </header>
+        {renderSecureSettings()}
+        {secureChat?.status !== 'off' && (
+          <div className={`secure-chat-banner ${secureChat.unlocked ? 'unlocked' : ''}`}>
+            {secureChat.unlocked ? '安全聊天已解锁，消息在浏览器中加密，服务器仅保存密文。' : '安全聊天已锁定，解锁后才能查看和发送消息。'}
+          </div>
+        )}
         {profileOpen && (
           <div className="profile-dialog-backdrop" role="presentation" onClick={() => setProfileOpen(false)}>
             <section
@@ -1662,7 +1809,7 @@ function ChatWindow({
             const canAddSticker = stickerBubble && !mine && message.sticker;
             const stickerSaved = canAddSticker && hasSavedSticker(message.sticker);
             const savingSticker = savingStickerMessageIds.includes(message.id);
-            const canRecall = mine && !recalled && Date.now() - new Date(message.createdAt).getTime() <= 8 * 60 * 1000;
+            const canRecall = secureChat?.status === 'off' && mine && !recalled && Date.now() - new Date(message.createdAt).getTime() <= 8 * 60 * 1000;
             return (
               <div
                 key={message.id}
@@ -1727,7 +1874,8 @@ function ChatWindow({
                 ref={textareaRef}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
-                placeholder={`发送给 ${contact.displayName}`}
+                placeholder={secureChat?.status !== 'off' && !secureChat.unlocked ? '解锁安全聊天后发送消息' : `发送给 ${contact.displayName}`}
+                disabled={secureChat?.status !== 'off' && !secureChat.unlocked}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && event.ctrlKey) {
                     insertLineBreak(event);
@@ -2002,10 +2150,14 @@ export default function App() {
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [stickers, setStickers] = useState([]);
+  const [secureChat, setSecureChat] = useState({ status: 'off', unlocked: false });
+  const [secureChatSupported, setSecureChatSupported] = useState(false);
   const [loading, setLoading] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
   const selectedId = selected?.id;
   const messagesRef = useRef([]);
+  const secureRootRef = useRef(null);
+  const secureMaterialRef = useRef(null);
   const loadingOlderMessagesRef = useRef(false);
   const hasOlderMessagesRef = useRef(false);
   const originalTitleRef = useRef('doolulu');
@@ -2014,6 +2166,10 @@ export default function App() {
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
+
+  useEffect(() => {
+    setSecureChatSupported(isSecureChatSupported());
+  }, []);
 
   useEffect(() => {
     loadingOlderMessagesRef.current = loadingOlderMessages;
@@ -2025,6 +2181,9 @@ export default function App() {
 
   function clearSession() {
     localStorage.removeItem('doolulu.token');
+    secureRootRef.current = null;
+    secureMaterialRef.current = null;
+    setSecureChat({ status: 'off', unlocked: false });
     setUser(null);
     setSelected(null);
     setMessages([]);
@@ -2050,6 +2209,18 @@ export default function App() {
 
   async function loadLatestMessages(contactId = selectedId) {
     if (!contactId) return;
+    const material = await loadSecureMaterial(contactId);
+    if (material?.conversation?.status && material.conversation.status !== 'off') {
+      if (secureRootRef.current?.conversationId !== material.conversation.conversationId) {
+        setMessages([]);
+        setHasOlderMessages(false);
+        return;
+      }
+      const data = await api.encryptedMessages(contactId, { limit: messagePageSize });
+      setMessages(await decryptEncryptedMessages(data.messages));
+      setHasOlderMessages(Boolean(data.hasMore));
+      return;
+    }
     const data = await api.messages(contactId, { limit: messagePageSize });
     setMessages(data.messages);
     setHasOlderMessages(Boolean(data.hasMore));
@@ -2063,6 +2234,15 @@ export default function App() {
       return;
     }
     const newest = current.at(-1);
+    if (secureChat.status !== 'off') {
+      if (!secureRootRef.current) return;
+      const data = await api.encryptedMessages(contactId, { after: newest.createdAt, limit: messagePageSize });
+      if (data.messages.length > 0) {
+        const decrypted = await decryptEncryptedMessages(data.messages);
+        setMessages((items) => mergeMessages(items, decrypted));
+      }
+      return;
+    }
     const data = await api.messages(contactId, { after: newest.createdAt, limit: messagePageSize });
     if (data.messages.length > 0) {
       setMessages((items) => mergeMessages(items, data.messages));
@@ -2082,6 +2262,14 @@ export default function App() {
     loadingOlderMessagesRef.current = true;
     setLoadingOlderMessages(true);
     try {
+      if (secureChat.status !== 'off') {
+        if (!secureRootRef.current) return;
+        const data = await api.encryptedMessages(contactId, { before: oldest.createdAt, limit: messagePageSize });
+        const decrypted = await decryptEncryptedMessages(data.messages);
+        setMessages((items) => mergeMessages(decrypted, items));
+        setHasOlderMessages(Boolean(data.hasMore));
+        return;
+      }
       const data = await api.messages(contactId, { before: oldest.createdAt, limit: messagePageSize });
       setMessages((items) => mergeMessages(data.messages, items));
       setHasOlderMessages(Boolean(data.hasMore));
@@ -2111,7 +2299,271 @@ export default function App() {
     );
   }
 
+  function secureAad(conversationId, userId, keyVersion, wrapType) {
+    return { conversationId, userId, keyVersion, wrapType, cryptoVersion: secureCryptoVersion };
+  }
+
+  function secureStateFromMaterial(material, contactId) {
+    const pairing = readPairingFragment();
+    return {
+      status: material?.conversation?.status || 'off',
+      enabled: Boolean(material?.conversation?.enabled),
+      unlocked: secureRootRef.current?.conversationId === material?.conversation?.conversationId,
+      conversationId: material?.conversation?.conversationId || (user && contactId ? makeConversationId(user.id, contactId) : ''),
+      keyVersion: material?.conversation?.currentKeyVersion || 1,
+      recoveryOwnerUserId: material?.conversation?.recoveryOwnerUserId || null,
+      canCompletePairing: Boolean(
+        pairing &&
+        material?.pairingWrappedKey &&
+        pairing.conversationId === material.conversation.conversationId &&
+        pairing.pairingId === material.pairingWrappedKey.pairingId
+      )
+    };
+  }
+
+  async function loadSecureMaterial(contactId = selectedId) {
+    if (!user || !contactId) return null;
+    const conversationId = makeConversationId(user.id, contactId);
+    try {
+      const material = await api.secureKeyMaterial(conversationId);
+      secureMaterialRef.current = material;
+      setSecureChat(secureStateFromMaterial(material, contactId));
+      if (material?.conversation?.status === 'off') return null;
+      return material;
+    } catch {
+      secureMaterialRef.current = null;
+      secureRootRef.current = null;
+      setSecureChat({ status: 'off', unlocked: false, conversationId });
+      return null;
+    }
+  }
+
+  async function decryptEncryptedMessages(encryptedMessages, rootKey = secureRootRef.current?.rootKey) {
+    if (!rootKey) return [];
+    const decrypted = [];
+    for (const message of encryptedMessages) {
+      try {
+        const payload = await decryptMessage(rootKey, message);
+        decrypted.push({
+          ...message,
+          kind: payload.kind || 'text',
+          text: payload.text || '',
+          quote: payload.quote || null,
+          sticker: payload.sticker || null
+        });
+      } catch {
+        decrypted.push({
+          ...message,
+          kind: 'text',
+          text: '消息完整性校验失败，内容可能已损坏。',
+          quote: null,
+          sticker: null,
+          decryptFailed: true
+        });
+      }
+    }
+    return decrypted;
+  }
+
+  async function unlockSecureChatWithPassword(password, material = secureMaterialRef.current) {
+    if (!user || !material?.userWrappedKey) throw new Error('当前账号还没有安全聊天密钥');
+    assertSecureChatSupported();
+    const wrapped = material.userWrappedKey;
+    const kek = await deriveChatKek(password, user.id, wrapped.kdfSalt, wrapped.kdfParameters);
+    const rootKey = await unwrapRootKey(
+      wrapped,
+      kek,
+      secureAad(material.conversation.conversationId, user.id, wrapped.keyVersion, 'user')
+    );
+    secureRootRef.current = { conversationId: material.conversation.conversationId, rootKey };
+    setSecureChat(secureStateFromMaterial(material, selectedId));
+    return rootKey;
+  }
+
+  async function promptUnlockSecureChat() {
+    const material = secureMaterialRef.current || await loadSecureMaterial();
+    if (!material?.userWrappedKey) {
+      alert('当前账号还没有完成安全聊天初始化。');
+      return null;
+    }
+    const password = window.prompt('请输入安全聊天密码');
+    if (!password) return null;
+    try {
+      const rootKey = await unlockSecureChatWithPassword(password, material);
+      await loadLatestMessages(selectedId);
+      return rootKey;
+    } catch (err) {
+      alert(err?.message?.includes('当前浏览器不支持安全聊天')
+        ? err.message
+        : '无法解锁安全聊天，请检查密码是否正确。');
+      return null;
+    }
+  }
+
+  function lockSecureChat() {
+    secureRootRef.current = null;
+    setMessages([]);
+    setSecureChat((current) => ({ ...current, unlocked: false }));
+  }
+
+  async function enableSecureChat() {
+    if (!user || !selected) return;
+    assertSecureChatSupported();
+    const password = window.prompt('请设置安全聊天密码。请妥善记住，服务器无法帮你找回。');
+    if (!password) return;
+    const conversationId = makeConversationId(user.id, selected.id);
+    const keyVersion = 1;
+    const rootKey = generateRootKey();
+    const salt = randomSalt();
+    const kek = await deriveChatKek(password, user.id, salt, defaultKdfParameters);
+    const userWrapped = await wrapRootKey(rootKey, kek, secureAad(conversationId, user.id, keyVersion, 'user'));
+    const recoveryKey = generateRecoveryKey();
+    const recoveryKek = await deriveRecoveryKek(recoveryKey, conversationId);
+    const recoveryWrapped = await wrapRootKey(rootKey, recoveryKek, secureAad(conversationId, 'recovery', keyVersion, 'recovery'));
+    await api.enableSecureConversation({
+      contactId: selected.id,
+      userWrappedKey: {
+        ...userWrapped,
+        kdfAlgorithm: 'Argon2id',
+        kdfSalt: base64(salt),
+        kdfParameters: defaultKdfParameters,
+        keyVersion
+      },
+      recoveryWrappedKey: { ...recoveryWrapped, recoveryVersion: 1 }
+    });
+    const pairingSecret = generatePairingSecret();
+    const pairingKek = await derivePairingKek(pairingSecret, conversationId);
+    const pairingWrapped = await wrapRootKey(rootKey, pairingKek, secureAad(conversationId, 'pairing', keyVersion, 'pairing'));
+    const pairing = await api.createSecurePairing({
+      conversationId,
+      pairingWrappedKey: { ...pairingWrapped, recoveryVersion: keyVersion },
+      ttlMinutes: 30
+    });
+    secureRootRef.current = { conversationId, rootKey };
+    await loadSecureMaterial(selected.id);
+    const recoveryCode = formatRecoveryCode(recoveryKey);
+    const inviteUrl = `${window.location.origin}${window.location.pathname}#${encodePairingFragment({
+      conversationId,
+      pairingId: pairing.pairingId,
+      pairingSecret
+    })}`;
+    window.alert(`请保存恢复密钥，只显示一次：\n\n${recoveryCode}\n\n把下面的安全配对链接通过可信方式发给对方，30 分钟内使用：\n\n${inviteUrl}`);
+  }
+
+  async function completeSecurePairing() {
+    if (!user || !selected) return;
+    const material = secureMaterialRef.current || await loadSecureMaterial(selected.id);
+    const pairing = readPairingFragment();
+    if (!pairing || !material?.pairingWrappedKey) {
+      alert('没有可用的安全配对信息，或配对链接已过期。');
+      return;
+    }
+    const password = window.prompt('请设置你的安全聊天密码');
+    if (!password) return;
+    try {
+      const keyVersion = material.pairingWrappedKey.keyVersion;
+      const pairingKek = await derivePairingKek(pairing.pairingSecret, material.conversation.conversationId);
+      const rootKey = await unwrapRootKey(
+        material.pairingWrappedKey,
+        pairingKek,
+        secureAad(material.conversation.conversationId, 'pairing', keyVersion, 'pairing')
+      );
+      const salt = randomSalt();
+      const kek = await deriveChatKek(password, user.id, salt, defaultKdfParameters);
+      const userWrapped = await wrapRootKey(
+        rootKey,
+        kek,
+        secureAad(material.conversation.conversationId, user.id, keyVersion, 'user')
+      );
+      await api.completeSecurePairing({
+        conversationId: material.conversation.conversationId,
+        pairingId: pairing.pairingId,
+        userWrappedKey: {
+          ...userWrapped,
+          kdfAlgorithm: 'Argon2id',
+          kdfSalt: base64(salt),
+          kdfParameters: defaultKdfParameters,
+          keyVersion
+        }
+      });
+      clearPairingFragment();
+      secureRootRef.current = { conversationId: material.conversation.conversationId, rootKey };
+      await loadSecureMaterial(selected.id);
+      await loadLatestMessages(selected.id);
+    } catch {
+      alert('该配对链接无效、已过期或不属于当前聊天空间。');
+    }
+  }
+
+  async function resetSecurePassword(providedPassword = '') {
+    if (!user || !secureRootRef.current || !secureMaterialRef.current) return;
+    const password = providedPassword || window.prompt('请输入新的安全聊天密码');
+    if (!password) return;
+    const material = secureMaterialRef.current;
+    const keyVersion = material.conversation.currentKeyVersion;
+    const salt = randomSalt();
+    const kek = await deriveChatKek(password, user.id, salt, defaultKdfParameters);
+    const userWrapped = await wrapRootKey(
+      secureRootRef.current.rootKey,
+      kek,
+      secureAad(material.conversation.conversationId, user.id, keyVersion, 'user')
+    );
+    await api.updateSecureUserWrappedKey(material.conversation.conversationId, {
+      ...userWrapped,
+      kdfAlgorithm: 'Argon2id',
+      kdfSalt: base64(salt),
+      kdfParameters: defaultKdfParameters,
+      keyVersion
+    });
+    await loadSecureMaterial(selectedId);
+    alert('安全聊天密码已更新，历史消息无需重新加密。');
+  }
+
+  async function rotateRecoveryKey() {
+    if (!secureRootRef.current || !secureMaterialRef.current) return;
+    const ok = window.confirm('更换恢复密钥后，旧恢复密钥会立即失效。继续吗？');
+    if (!ok) return;
+    const material = secureMaterialRef.current;
+    const keyVersion = material.conversation.currentKeyVersion;
+    const recoveryKey = generateRecoveryKey();
+    const recoveryKek = await deriveRecoveryKek(recoveryKey, material.conversation.conversationId);
+    const recoveryWrapped = await wrapRootKey(
+      secureRootRef.current.rootKey,
+      recoveryKek,
+      secureAad(material.conversation.conversationId, 'recovery', keyVersion, 'recovery')
+    );
+    await api.rotateSecureRecoveryKey(material.conversation.conversationId, {
+      recoveryWrappedKey: { ...recoveryWrapped, recoveryVersion: Date.now() }
+    });
+    alert(`请保存新的恢复密钥，只显示一次：\n\n${formatRecoveryCode(recoveryKey)}`);
+  }
+
+  async function recoverSecurePassword() {
+    if (!user || !secureMaterialRef.current) return;
+    const recoveryCode = window.prompt('请粘贴恢复密钥');
+    if (!recoveryCode) return;
+    const nextPassword = window.prompt('请设置新的安全聊天密码');
+    if (!nextPassword) return;
+    try {
+      const material = secureMaterialRef.current;
+      const recoveryKek = await deriveRecoveryKek(parseRecoveryCode(recoveryCode), material.conversation.conversationId);
+      const rootKey = await unwrapRootKey(
+        material.recoveryWrappedKey,
+        recoveryKek,
+        secureAad(material.conversation.conversationId, 'recovery', material.conversation.currentKeyVersion, 'recovery')
+      );
+      secureRootRef.current = { conversationId: material.conversation.conversationId, rootKey };
+      await resetSecurePassword(nextPassword);
+      await loadLatestMessages(selectedId);
+    } catch {
+      alert('该恢复密钥无效或不属于当前聊天空间。');
+    }
+  }
+
   function selectContact(contact) {
+    secureRootRef.current = null;
+    secureMaterialRef.current = null;
+    setSecureChat({ status: 'off', unlocked: false });
     setMessages([]);
     setHasOlderMessages(false);
     setLoadingOlderMessages(false);
@@ -2121,6 +2573,7 @@ export default function App() {
 
   async function markSelectedRead(contactId = selectedId) {
     if (!contactId) return;
+    if (secureChat.status !== 'off') return;
     const data = await api.markRead(contactId);
     markMessagesReadLocally(contactId, data.readAt);
     await refreshContacts();
@@ -2186,7 +2639,7 @@ export default function App() {
       refreshNewMessages(selectedId).catch(console.error);
     }, 1500);
     return () => clearInterval(timer);
-  }, [selectedId]);
+  }, [selectedId, secureChat.status]);
 
   useEffect(() => {
     if (!user || !selectedId || !pageVisible) return;
@@ -2291,11 +2744,51 @@ export default function App() {
           loadingOlderMessages={loadingOlderMessages}
           onLoadOlderMessages={() => loadOlderMessages(selected.id).catch(console.error)}
           onSend={async (text, quoteId) => {
+            if (secureChat.status !== 'off') {
+              const material = secureMaterialRef.current;
+              const root = secureRootRef.current;
+              if (!material || !root) {
+                await promptUnlockSecureChat();
+                throw new Error('请先解锁安全聊天');
+              }
+              const ownMessages = messagesRef.current.filter((message) => message.fromId === user.id && message.sequenceNumber);
+              const nextSequence = Math.max(0, ...ownMessages.map((message) => Number(message.sequenceNumber) || 0)) + 1;
+              const quote = quoteId ? messagesRef.current.find((message) => message.id === quoteId) : null;
+              const encrypted = await encryptMessage(root.rootKey, material.conversation.conversationId, user.id, nextSequence, {
+                kind: 'text',
+                text,
+                quote: quote ? {
+                  id: quote.id,
+                  fromId: quote.fromId,
+                  authorName: quote.fromId === user.id ? user.displayName : selected.displayName,
+                  text: quote.text,
+                  kind: quote.kind || 'text',
+                  recalledAt: quote.recalledAt || null
+                } : null
+              });
+              const data = await api.sendEncryptedMessage({
+                toId: selected.id,
+                ...encrypted,
+                keyVersion: material.conversation.currentKeyVersion
+              });
+              upsertMessages({
+                ...data.message,
+                kind: 'text',
+                text,
+                quote: quote || null,
+                sticker: null
+              });
+              await refreshContacts();
+              return;
+            }
             const data = await api.sendQuotedMessage(selected.id, text, quoteId);
             upsertMessages(data.message);
             await refreshContacts();
           }}
           onSendSticker={async (stickerId, quoteId) => {
+            if (secureChat.status !== 'off') {
+              throw new Error('安全聊天模式下暂不支持发送表情包。');
+            }
             const data = await api.sendSticker(selected.id, stickerId, quoteId);
             upsertMessages(data.message);
             await refreshContacts();
@@ -2309,10 +2802,22 @@ export default function App() {
             await refreshStickers();
           }}
           onRecall={async (messageId) => {
+            if (secureChat.status !== 'off') {
+              throw new Error('安全聊天模式下暂不支持撤回。');
+            }
             const data = await api.recallMessage(messageId);
             upsertMessages(data.message);
             await refreshContacts();
           }}
+          secureChat={secureChat}
+          secureChatSupported={secureChatSupported}
+          onEnableSecureChat={enableSecureChat}
+          onUnlockSecureChat={promptUnlockSecureChat}
+          onLockSecureChat={lockSecureChat}
+          onCompleteSecurePairing={completeSecurePairing}
+          onResetSecurePassword={() => resetSecurePassword()}
+          onRotateRecoveryKey={rotateRecoveryKey}
+          onRecoverSecurePassword={recoverSecurePassword}
           onBack={() => setSelected(null)}
         />
       )}

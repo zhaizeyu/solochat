@@ -4,7 +4,7 @@ import { createReadStream, createWriteStream, existsSync, readdirSync } from 'no
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { localUploadsDir, localUploadsPublicPath, r2Config, useLocalUploads } from './config.js';
+import { localUploadsDir, localUploadsPublicPath, r2Config, uploadToR2, useLocalUploads } from './config.js';
 
 function imageExtensionFromMime(mime) {
   if (mime === 'image/jpeg' || mime === 'image/jpg') return 'jpg';
@@ -126,6 +126,10 @@ export function localPublicUrlForObjectKey(objectKey) {
   return `${localUploadsPublicPath}/${encodeS3Path(objectKey)}`;
 }
 
+function publicUrlForObjectKey(objectKey) {
+  return uploadToR2 ? r2PublicUrlForObjectKey(objectKey) : localPublicUrlForObjectKey(objectKey);
+}
+
 export function storedImageUrlForClient(value) {
   const objectKey = objectKeyFromR2PublicUrl(value) || objectKeyFromLocalPublicUrl(value);
   if (!useLocalUploads || !objectKey) return value || '';
@@ -134,7 +138,7 @@ export function storedImageUrlForClient(value) {
 
 export function r2PublicUrlForStoredImage(value) {
   const objectKey = objectKeyFromR2PublicUrl(value) || objectKeyFromLocalPublicUrl(value);
-  return objectKey ? r2PublicUrlForObjectKey(objectKey) : value || '';
+  return objectKey ? publicUrlForObjectKey(objectKey) : value || '';
 }
 
 function assertR2Config() {
@@ -319,7 +323,7 @@ export async function deleteStoredImage(imagePath) {
   const objectKey = objectKeyFromStoredImageUrl(imagePath);
   if (!objectKey) return { r2: false, local: false, objectKey: null };
 
-  const r2 = await deleteR2Object(objectKey);
+  const r2 = uploadToR2 ? await deleteR2Object(objectKey) : false;
   const local = useLocalUploads ? await deleteLocalUpload(objectKey) : false;
   return { r2, local, objectKey };
 }
@@ -330,7 +334,7 @@ export async function deleteMomentImageVariants(momentId, keepObjectKey = '') {
 
   for (const objectKey of momentImageObjectKeys(momentId)) {
     if (objectKey === keepKey) continue;
-    const result = await deleteStoredImage(r2PublicUrlForObjectKey(objectKey));
+    const result = await deleteStoredImage(publicUrlForObjectKey(objectKey));
     if (result.r2) deleted.r2.push(objectKey);
     if (result.local) deleted.local.push(objectKey);
   }
@@ -355,12 +359,14 @@ export async function findOrphanedMomentImageKeys(db) {
   for (const objectKey of listLocalImageKeysUnderPrefix('moments')) {
     storedKeys.add(objectKey);
   }
-  try {
-    for (const objectKey of await listAllR2ImageKeys('moments')) {
-      storedKeys.add(objectKey);
+  if (uploadToR2) {
+    try {
+      for (const objectKey of await listAllR2ImageKeys('moments')) {
+        storedKeys.add(objectKey);
+      }
+    } catch (error) {
+      if (!useLocalUploads) throw error;
     }
-  } catch (error) {
-    if (!useLocalUploads) throw error;
   }
 
   const orphaned = [...storedKeys].filter((objectKey) => !keepKeys.has(objectKey)).sort();
@@ -370,10 +376,12 @@ export async function findOrphanedMomentImageKeys(db) {
 async function deleteOrphanObject(objectKey) {
   let r2 = false;
   let local = false;
-  try {
-    r2 = await deleteR2Object(objectKey);
-  } catch (error) {
-    if (!String(error.message || '').includes('404')) throw error;
+  if (uploadToR2) {
+    try {
+      r2 = await deleteR2Object(objectKey);
+    } catch (error) {
+      if (!String(error.message || '').includes('404')) throw error;
+    }
   }
   try {
     if (existsSync(safeLocalUploadPath(objectKey))) {
@@ -403,7 +411,7 @@ export async function cleanupOrphanedMomentImages(db, { dryRun = false } = {}) {
 }
 
 export async function syncR2ImagesToLocal() {
-  if (!useLocalUploads) return { enabled: false, downloaded: 0, skipped: 0 };
+  if (!useLocalUploads || !uploadToR2) return { enabled: false, downloaded: 0, skipped: 0 };
   assertR2Config();
   await mkdir(localUploadsDir, { recursive: true });
 
@@ -468,6 +476,8 @@ export async function saveImageDataUrl(dataUrl, folder, fileBaseName) {
   if (useLocalUploads) {
     await writeLocalUpload(objectKey, buffer);
   }
-  await putR2Object(objectKey, buffer, mime);
-  return r2PublicUrlForObjectKey(objectKey);
+  if (uploadToR2) {
+    await putR2Object(objectKey, buffer, mime);
+  }
+  return publicUrlForObjectKey(objectKey);
 }

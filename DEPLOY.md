@@ -8,6 +8,8 @@ Required environment variables:
 
 ```env
 DATABASE_URL=postgres://user:password@host:5432/solochat
+TEST_MODE=false
+TEST_DATABASE_URL=postgres://user:password@host:5433/postgres
 R2_BUCKET=solochat
 R2_ACCESS_KEY_ID=your-r2-access-key-id
 R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
@@ -21,6 +23,8 @@ PORT=3000
 Coolify can still render templates such as `{{ team.DATABASE_URL }}` before the container starts. The app only reads the final environment variable values.
 
 Set `USE_LOCAL=true` to mirror R2 images into local storage on startup and serve client image URLs from `/uploads/...` when the local file exists. New uploads are also written to local storage before being uploaded to R2. The local directory defaults to `data/uploads`; set `LOCAL_UPLOADS_DIR` if you need a different mounted persistent volume.
+
+Set `TEST_MODE=true` to use `TEST_DATABASE_URL` instead of `DATABASE_URL`. In test mode, uploads are stored only under the local uploads directory and the app does not upload, sync, list, or delete R2 objects.
 
 ## Local Docker
 

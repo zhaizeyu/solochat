@@ -12,6 +12,7 @@ import {
   rowToMessage
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
+import { isSecureConversationActive } from './secure-conversations.js';
 import { conversationKey, messagePreview, parseJson, stringifyJson } from '../utils.js';
 
 async function updateQuotesForRecalledMessage(message, now) {
@@ -157,6 +158,9 @@ export async function handleMessages(req, res, pathName, user, url) {
       }
     }
     const conversationId = conversationKey(user.id, target.id);
+    if (await isSecureConversationActive(conversationId)) {
+      return json(res, 409, { message: '安全聊天已开启，请使用安全消息发送' });
+    }
     let quote = null;
     if (quoteId) {
       const quotedMessage = await db
