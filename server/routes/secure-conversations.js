@@ -499,7 +499,12 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     const context = await getContactConversation(user, body.toId);
     if (!context) return json(res, 404, { message: '联系人不存在' });
     const secure = await db.prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(context.conversationId);
-    if (!secure?.enabled) return json(res, 400, { message: '安全聊天尚未启用' });
+    if (!secure || secure.status === 'off') return json(res, 400, { message: '安全聊天尚未启用' });
+    const ownKey = await db.prepare(`
+      SELECT 1 FROM user_wrapped_conversation_keys
+      WHERE conversation_id = ? AND user_id = ? AND key_version = ?
+    `).get(context.conversationId, user.id, secure.current_key_version);
+    if (!ownKey) return json(res, 403, { message: '请先完成安全配对' });
     const messageId = String(body.messageId || '');
     const ciphertext = String(body.ciphertext || '');
     const iv = String(body.iv || '');

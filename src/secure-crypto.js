@@ -95,13 +95,19 @@ export function encodePairingFragment({ conversationId, pairingId, pairingSecret
   return `securePairing=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
-export function readPairingFragment() {
-  const hash = window.location.hash.replace(/^#/, '');
-  const params = new URLSearchParams(hash);
-  const raw = params.get('securePairing');
+export function parsePairingText(value) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  let raw = '';
+  try {
+    const url = new URL(text, window.location.origin);
+    raw = new URLSearchParams(url.hash.replace(/^#/, '')).get('securePairing') || url.searchParams.get('securePairing') || '';
+  } catch {
+    raw = new URLSearchParams(text.replace(/^#/, '')).get('securePairing') || text;
+  }
   if (!raw) return null;
   try {
-    const payload = JSON.parse(raw);
+    const payload = JSON.parse(raw.startsWith('{') ? raw : decodeURIComponent(raw));
     return {
       conversationId: String(payload.c || ''),
       pairingId: String(payload.p || ''),
@@ -110,6 +116,10 @@ export function readPairingFragment() {
   } catch {
     return null;
   }
+}
+
+export function readPairingFragment() {
+  return parsePairingText(window.location.hash);
 }
 
 export function clearPairingFragment() {

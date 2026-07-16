@@ -4,9 +4,11 @@ import test from 'node:test';
 import { addContact, call, hasDatabase, register, sendMessage, state } from '../test-support/helpers.js';
 
 const runId = `${process.pid}_${Date.now()}`.replace(/[^a-zA-Z0-9_]/g, '_');
+let userCounter = 0;
 
-function testUsername(name) {
-  return `${name}_${runId}`.slice(0, 20);
+function testUsername() {
+  userCounter += 1;
+  return `sec${userCounter}_${runId.slice(-10)}`.slice(0, 20);
 }
 
 function b64(bytes) {
@@ -104,6 +106,46 @@ test('secure chat stores wrapped keys and blocks plaintext message fallback', { 
     body: { toId: bob.id, text: 'should not be stored as plaintext' }
   });
   assert.equal(blocked.status, 409);
+});
+
+test('secure chat initiator can send encrypted messages while peer pairing is pending', { skip: !hasDatabase }, async () => {
+  const alice = await register(testUsername('secure_pending_send_a'));
+  const bob = await register(testUsername('secure_pending_send_b'));
+  await addContact(alice, bob.username);
+
+  await enableSecureChat(alice, bob);
+
+  const sent = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/messages/encrypted',
+    user: alice,
+    body: {
+      toId: bob.id,
+      messageId: crypto.randomUUID(),
+      ciphertext: b64(80),
+      iv: b64(12),
+      sequenceNumber: 1,
+      cryptoVersion: 1,
+      keyVersion: 1
+    }
+  });
+  assert.equal(sent.status, 201);
+
+  const peerBlocked = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/messages/encrypted',
+    user: bob,
+    body: {
+      toId: alice.id,
+      messageId: crypto.randomUUID(),
+      ciphertext: b64(80),
+      iv: b64(12),
+      sequenceNumber: 1,
+      cryptoVersion: 1,
+      keyVersion: 1
+    }
+  });
+  assert.equal(peerBlocked.status, 403);
 });
 
 test('key material reports off for valid conversations without secure chat', { skip: !hasDatabase }, async () => {

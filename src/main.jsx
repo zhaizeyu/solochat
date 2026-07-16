@@ -23,6 +23,7 @@ import {
   generateRootKey,
   isSecureChatSupported,
   makeConversationId,
+  parsePairingText,
   parseRecoveryCode,
   randomSalt,
   readPairingFragment,
@@ -1269,6 +1270,8 @@ function ChatWindow({
   onUnlockSecureChat,
   onLockSecureChat,
   onCompleteSecurePairing,
+  onEnterSecurePairingLink,
+  onCreateSecurePairingLink,
   onResetSecurePassword,
   onRotateRecoveryKey,
   onRecoverSecurePassword,
@@ -1738,6 +1741,12 @@ function ChatWindow({
           )}
           {secureChat.canCompletePairing && (
             <Button type="button" variant="primary" onClick={() => runSecureAction(onCompleteSecurePairing)} disabled={!secureChatSupported}>设置密码并关联</Button>
+          )}
+          {secureChat.canCreatePairingLink && (
+            <Button type="button" variant="primary" onClick={() => runSecureAction(onCreateSecurePairingLink)} disabled={!secureChatSupported}>生成配对链接</Button>
+          )}
+          {secureChat.canEnterPairingLink && (
+            <Button type="button" variant="primary" onClick={() => runSecureAction(onEnterSecurePairingLink)} disabled={!secureChatSupported}>粘贴配对链接</Button>
           )}
           {secureChat.status !== 'off' && !secureChat.unlocked && secureChat.hasUserWrappedKey && secureChat.hasRecoveryWrappedKey && (
             <Button type="button" onClick={() => runSecureAction(onRecoverSecurePassword)} disabled={!secureChatSupported}>使用恢复密钥恢复</Button>
@@ -2377,21 +2386,27 @@ export default function App() {
 
   function secureStateFromMaterial(material, contactId) {
     const pairing = readPairingFragment();
+    const status = material?.conversation?.status || 'off';
+    const hasUserWrappedKey = Boolean(material?.userWrappedKey);
+    const canCompletePairing = Boolean(
+      pairing &&
+      material?.pairingWrappedKey &&
+      pairing.conversationId === material.conversation.conversationId &&
+      pairing.pairingId === material.pairingWrappedKey.pairingId
+    );
     return {
-      status: material?.conversation?.status || 'off',
+      status,
       enabled: Boolean(material?.conversation?.enabled),
       unlocked: secureRootRef.current?.conversationId === material?.conversation?.conversationId,
       conversationId: material?.conversation?.conversationId || (user && contactId ? makeConversationId(user.id, contactId) : ''),
       keyVersion: material?.conversation?.currentKeyVersion || 1,
       recoveryOwnerUserId: material?.conversation?.recoveryOwnerUserId || null,
-      hasUserWrappedKey: Boolean(material?.userWrappedKey),
+      hasUserWrappedKey,
       hasRecoveryWrappedKey: Boolean(material?.recoveryWrappedKey),
-      canCompletePairing: Boolean(
-        pairing &&
-        material?.pairingWrappedKey &&
-        pairing.conversationId === material.conversation.conversationId &&
-        pairing.pairingId === material.pairingWrappedKey.pairingId
-      )
+      hasAvailablePairing: Boolean(material?.pairingWrappedKey),
+      canCompletePairing,
+      canCreatePairingLink: status === 'waiting_peer' && hasUserWrappedKey,
+      canEnterPairingLink: status === 'waiting_peer' && !hasUserWrappedKey && !canCompletePairing
     };
   }
 
@@ -2535,10 +2550,10 @@ export default function App() {
     );
   }
 
-  async function completeSecurePairing() {
+  async function completeSecurePairing(providedPairing = null) {
     if (!user || !selected) return;
     const material = secureMaterialRef.current || await loadSecureMaterial(selected.id);
-    const pairing = readPairingFragment();
+    const pairing = providedPairing || readPairingFragment();
     if (!pairing || !material?.pairingWrappedKey) {
       alert('没有可用的安全配对信息，或配对链接已过期。');
       return;
@@ -2578,6 +2593,62 @@ export default function App() {
     } catch {
       alert('该配对链接无效、已过期或不属于当前聊天空间。');
     }
+  }
+
+  async function enterSecurePairingLink() {
+    if (!user || !selected) return;
+    const material = secureMaterialRef.current || await loadSecureMaterial(selected.id);
+    const value = window.prompt('请粘贴对方发送的安全配对链接');
+    if (!value) return;
+    const pairing = parsePairingText(value);
+    if (
+      !pairing ||
+      !material?.pairingWrappedKey ||
+      pairing.conversationId !== material.conversation.conversationId ||
+      pairing.pairingId !== material.pairingWrappedKey.pairingId
+    ) {
+      alert('该配对链接无效、已过期或不属于当前聊天空间。');
+      return;
+    }
+    await completeSecurePairing(pairing);
+  }
+
+  async function createSecurePairingLink() {
+    if (!user || !selected) return;
+    assertSecureChatSupported();
+    const material = secureMaterialRef.current || await loadSecureMaterial(selected.id);
+    if (material?.conversation?.status !== 'waiting_peer' || !material?.userWrappedKey) {
+      alert('当前安全聊天状态不能生成配对链接。');
+      return;
+    }
+    let rootKey = secureRootRef.current?.conversationId === material.conversation.conversationId
+      ? secureRootRef.current.rootKey
+      : null;
+    if (!rootKey) {
+      rootKey = await promptUnlockSecureChat();
+      if (!rootKey) return;
+    }
+    const conversationId = material.conversation.conversationId;
+    const keyVersion = material.conversation.currentKeyVersion;
+    const pairingSecret = generatePairingSecret();
+    const pairingKek = await derivePairingKek(pairingSecret, conversationId);
+    const pairingWrapped = await wrapRootKey(rootKey, pairingKek, secureAad(conversationId, 'pairing', keyVersion, 'pairing'));
+    const pairing = await api.createSecurePairing({
+      conversationId,
+      pairingWrappedKey: { ...pairingWrapped, recoveryVersion: keyVersion },
+      ttlMinutes: 30
+    });
+    await loadSecureMaterial(selected.id);
+    const inviteUrl = `${window.location.origin}${window.location.pathname}#${encodePairingFragment({
+      conversationId,
+      pairingId: pairing.pairingId,
+      pairingSecret
+    })}`;
+    showSecureSecretDialog(
+      '安全配对链接',
+      '请通过可信方式发送给对方，链接 30 分钟内有效。',
+      [{ key: 'invite', label: '安全配对链接', value: inviteUrl }]
+    );
   }
 
   async function resetSecurePassword(providedPassword = '') {
@@ -2645,7 +2716,10 @@ export default function App() {
       recoveryOwnerUserId: null,
       hasUserWrappedKey: false,
       hasRecoveryWrappedKey: false,
-      canCompletePairing: false
+      hasAvailablePairing: false,
+      canCompletePairing: false,
+      canCreatePairingLink: false,
+      canEnterPairingLink: false
     });
     await loadLatestMessages(selectedId);
     await refreshContacts();
@@ -2745,6 +2819,7 @@ export default function App() {
       setHasOlderMessages(false);
       return;
     }
+    loadSecureMaterial(selectedId).catch(console.error);
     setMessages([]);
     setHasOlderMessages(false);
     loadLatestMessages(selectedId).catch(console.error);
@@ -2928,6 +3003,8 @@ export default function App() {
           onUnlockSecureChat={promptUnlockSecureChat}
           onLockSecureChat={lockSecureChat}
           onCompleteSecurePairing={completeSecurePairing}
+          onEnterSecurePairingLink={enterSecurePairingLink}
+          onCreateSecurePairingLink={createSecurePairingLink}
           onResetSecurePassword={() => resetSecurePassword()}
           onRotateRecoveryKey={rotateRecoveryKey}
           onRecoverSecurePassword={recoverSecurePassword}
