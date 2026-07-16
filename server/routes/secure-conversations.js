@@ -144,6 +144,9 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
         ) VALUES (?, FALSE, 'waiting_peer', ?, ?, ?, ?, ?)
         ON CONFLICT (conversation_id) DO UPDATE SET
           status = CASE WHEN secure_conversations.enabled THEN secure_conversations.status ELSE 'waiting_peer' END,
+          crypto_version = CASE WHEN secure_conversations.enabled THEN secure_conversations.crypto_version ELSE EXCLUDED.crypto_version END,
+          current_key_version = CASE WHEN secure_conversations.enabled THEN secure_conversations.current_key_version ELSE EXCLUDED.current_key_version END,
+          recovery_owner_user_id = CASE WHEN secure_conversations.enabled THEN secure_conversations.recovery_owner_user_id ELSE EXCLUDED.recovery_owner_user_id END,
           updated_at = EXCLUDED.updated_at
       `).run(context.conversationId, cryptoVersion, own.keyVersion, user.id, now, now);
       await db.prepare(`
@@ -196,6 +199,30 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     });
 
     return json(res, 201, { conversationId: context.conversationId, status: 'waiting_peer' });
+  }
+
+  if (req.method === 'DELETE' && pathName.startsWith('/api/secure-conversations/')) {
+    const conversationId = decodeURIComponent(pathName.slice('/api/secure-conversations/'.length));
+    const context = await requireConversationMember(user, conversationId);
+    if (!context) return json(res, 404, { message: '安全聊天不存在' });
+    const secure = await db.prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(context.conversationId);
+    if (!secure || secure.status === 'off') return json(res, 200, { ok: true, status: 'off' });
+    const now = new Date().toISOString();
+    await execTransaction(async () => {
+      await db.prepare(`
+        UPDATE secure_conversations
+        SET enabled = FALSE,
+            status = 'off',
+            recovery_owner_user_id = NULL,
+            updated_at = ?
+        WHERE conversation_id = ?
+      `).run(now, context.conversationId);
+      await db.prepare('DELETE FROM user_wrapped_conversation_keys WHERE conversation_id = ?').run(context.conversationId);
+      await db.prepare('DELETE FROM recovery_wrapped_conversation_keys WHERE conversation_id = ?').run(context.conversationId);
+      await db.prepare('DELETE FROM secure_pairing_keys WHERE conversation_id = ?').run(context.conversationId);
+      await insertAudit(context.conversationId, user.id, 'secure_chat_disable');
+    });
+    return json(res, 200, { ok: true, status: 'off' });
   }
 
   if (req.method === 'POST' && pathName === '/api/secure-conversations/pairing/create') {

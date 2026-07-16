@@ -857,6 +857,108 @@ textarea:focus {
   color: var(--ink);
 }
 
+.secure-secret-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(18, 33, 43, 0.34);
+  backdrop-filter: blur(5px);
+}
+
+.secure-secret-dialog {
+  width: min(620px, 100%);
+  max-height: min(720px, calc(100vh - 40px));
+  overflow: auto;
+  display: grid;
+  gap: 16px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+}
+
+.secure-secret-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.secure-secret-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 19px;
+}
+
+.secure-secret-head p {
+  margin: 6px 0 0;
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.secure-secret-head > button {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 24px;
+  line-height: 1;
+}
+
+.secure-secret-items {
+  display: grid;
+  gap: 12px;
+}
+
+.secure-secret-item {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--canvas);
+  padding: 12px;
+}
+
+.secure-secret-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.secure-secret-item-head strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.secure-secret-item pre {
+  margin: 0;
+  max-height: 170px;
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.secure-secret-actions {
+  display: flex;
+  justify-content: end;
+}
+
 .mobile-back-button {
   display: none;
 }

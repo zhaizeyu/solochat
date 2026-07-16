@@ -116,6 +116,49 @@ test('key material reports off for valid conversations without secure chat', { s
   assert.equal(material.body.userWrappedKey, null);
 });
 
+test('secure chat can be disabled and re-enabled with fresh key material', { skip: !hasDatabase }, async () => {
+  const alice = await register('secure_disable_a');
+  const bob = await register('secure_disable_b');
+  await addContact(alice, bob.username);
+
+  const conversationId = await enableSecureChat(alice, bob);
+  const disabled = await call(state.handleSecureConversations, {
+    method: 'DELETE',
+    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}`,
+    user: alice
+  });
+  assert.equal(disabled.status, 200);
+
+  const disabledMaterial = await call(state.handleSecureConversations, {
+    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}/key-material`,
+    user: alice
+  });
+  assert.equal(disabledMaterial.body.conversation.status, 'off');
+  assert.equal(disabledMaterial.body.userWrappedKey, null);
+  assert.equal(disabledMaterial.body.recoveryWrappedKey, null);
+
+  const nextKey = userWrappedKey({ wrappedKey: b64(64), kdfSalt: b64(24) });
+  const reenabled = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/secure-conversations/enable',
+    user: alice,
+    body: {
+      contactId: bob.id,
+      userWrappedKey: nextKey,
+      recoveryWrappedKey: recoveryWrappedKey({ wrappedKey: b64(64) })
+    }
+  });
+  assert.equal(reenabled.status, 201);
+
+  const freshMaterial = await call(state.handleSecureConversations, {
+    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}/key-material`,
+    user: alice
+  });
+  assert.equal(freshMaterial.body.conversation.status, 'waiting_peer');
+  assert.equal(freshMaterial.body.userWrappedKey.wrappedKey, nextKey.wrappedKey);
+  assert.equal(freshMaterial.body.userWrappedKey.kdfSalt, nextKey.kdfSalt);
+});
+
 test('key material still hides non-contact conversations', { skip: !hasDatabase }, async () => {
   const alice = await register('secure_off_block_a');
   const bob = await register('secure_off_block_b');

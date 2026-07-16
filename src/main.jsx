@@ -124,6 +124,69 @@ function Button({ variant = 'subtle', className = '', ...props }) {
   return <ShadcnButton variant={variants[variant] || variant} className={className} {...props} />;
 }
 
+async function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.setAttribute('readonly', '');
+  textarea.style.position = 'fixed';
+  textarea.style.top = '-1000px';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
+function SecureSecretDialog({ dialog, onClose }) {
+  const [copiedKey, setCopiedKey] = useState('');
+  if (!dialog) return null;
+
+  async function copyItem(item) {
+    await copyTextToClipboard(item.value);
+    setCopiedKey(item.key);
+    window.setTimeout(() => {
+      setCopiedKey((current) => (current === item.key ? '' : current));
+    }, 1600);
+  }
+
+  return (
+    <div className="secure-secret-backdrop" role="presentation">
+      <section className="secure-secret-dialog" role="dialog" aria-modal="true" aria-labelledby="secure-secret-title">
+        <div className="secure-secret-head">
+          <div>
+            <h2 id="secure-secret-title">{dialog.title}</h2>
+            <p>{dialog.description}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="关闭">×</button>
+        </div>
+        <div className="secure-secret-items">
+          {dialog.items.map((item) => (
+            <article className="secure-secret-item" key={item.key}>
+              <div className="secure-secret-item-head">
+                <strong>{item.label}</strong>
+                <Button type="button" onClick={() => copyItem(item)}>
+                  {copiedKey === item.key ? '已复制' : '复制'}
+                </Button>
+              </div>
+              <pre>{item.value}</pre>
+            </article>
+          ))}
+        </div>
+        <div className="secure-secret-actions">
+          <Button type="button" variant="primary" onClick={onClose}>我已保存</Button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function SegmentedControl({ options, value, onChange, className = '', ariaLabel }) {
   return (
     <TabsList columns={options.length} className={cls('grid w-full gap-1', className)} aria-label={ariaLabel}>
@@ -625,6 +688,9 @@ const api = {
       method: 'POST',
       body: JSON.stringify(payload)
     });
+  },
+  disableSecureConversation(conversationId) {
+    return this.request(`/api/secure-conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' });
   },
   encryptedMessages(contactId, params = {}) {
     const search = new URLSearchParams({ contactId });
@@ -1206,6 +1272,7 @@ function ChatWindow({
   onResetSecurePassword,
   onRotateRecoveryKey,
   onRecoverSecurePassword,
+  onDisableSecureChat,
   onBack
 }) {
   const [text, setText] = useState('');
@@ -1681,6 +1748,9 @@ function ChatWindow({
               <Button type="button" onClick={() => runSecureAction(onRotateRecoveryKey)}>更换恢复密钥</Button>
             </>
           )}
+          {secureChat.status !== 'off' && (
+            <Button type="button" variant="danger" onClick={() => runSecureAction(onDisableSecureChat)}>关闭安全聊天</Button>
+          )}
         </div>
         {secureChat.status !== 'off' && (
           <dl className="secure-chat-details">
@@ -2152,6 +2222,7 @@ export default function App() {
   const [stickers, setStickers] = useState([]);
   const [secureChat, setSecureChat] = useState({ status: 'off', unlocked: false });
   const [secureChatSupported, setSecureChatSupported] = useState(false);
+  const [secureSecretDialog, setSecureSecretDialog] = useState(null);
   const [loading, setLoading] = useState(true);
   const [pageVisible, setPageVisible] = useState(true);
   const selectedId = selected?.id;
@@ -2183,6 +2254,7 @@ export default function App() {
     localStorage.removeItem('doolulu.token');
     secureRootRef.current = null;
     secureMaterialRef.current = null;
+    setSecureSecretDialog(null);
     setSecureChat({ status: 'off', unlocked: false });
     setUser(null);
     setSelected(null);
@@ -2406,6 +2478,10 @@ export default function App() {
     setSecureChat((current) => ({ ...current, unlocked: false }));
   }
 
+  function showSecureSecretDialog(title, description, items) {
+    setSecureSecretDialog({ title, description, items });
+  }
+
   async function enableSecureChat() {
     if (!user || !selected) return;
     assertSecureChatSupported();
@@ -2447,7 +2523,14 @@ export default function App() {
       pairingId: pairing.pairingId,
       pairingSecret
     })}`;
-    window.alert(`请保存恢复密钥，只显示一次：\n\n${recoveryCode}\n\n把下面的安全配对链接通过可信方式发给对方，30 分钟内使用：\n\n${inviteUrl}`);
+    showSecureSecretDialog(
+      '保存安全聊天信息',
+      '这些内容只显示一次。请分别复制保存恢复密钥，并通过可信方式发送安全配对链接给对方，链接 30 分钟内有效。',
+      [
+        { key: 'recovery', label: '恢复密钥', value: recoveryCode },
+        { key: 'invite', label: '安全配对链接', value: inviteUrl }
+      ]
+    );
   }
 
   async function completeSecurePairing() {
@@ -2535,7 +2618,33 @@ export default function App() {
     await api.rotateSecureRecoveryKey(material.conversation.conversationId, {
       recoveryWrappedKey: { ...recoveryWrapped, recoveryVersion: Date.now() }
     });
-    alert(`请保存新的恢复密钥，只显示一次：\n\n${formatRecoveryCode(recoveryKey)}`);
+    showSecureSecretDialog(
+      '保存新的恢复密钥',
+      '旧恢复密钥已失效。新恢复密钥只显示一次，请立即复制保存。',
+      [{ key: 'recovery', label: '恢复密钥', value: formatRecoveryCode(recoveryKey) }]
+    );
+  }
+
+  async function disableSecureChat() {
+    if (!secureChat?.conversationId) return;
+    const ok = window.confirm('关闭安全聊天后，当前安全聊天密码、恢复密钥和配对链接会失效。再次开启时需要重新设置密码和密钥。继续吗？');
+    if (!ok) return;
+    await api.disableSecureConversation(secureChat.conversationId);
+    secureRootRef.current = null;
+    secureMaterialRef.current = null;
+    setMessages([]);
+    setHasOlderMessages(false);
+    setSecureChat({
+      status: 'off',
+      enabled: false,
+      unlocked: false,
+      conversationId: secureChat.conversationId,
+      keyVersion: 1,
+      recoveryOwnerUserId: null,
+      canCompletePairing: false
+    });
+    await loadLatestMessages(selectedId);
+    await refreshContacts();
   }
 
   async function recoverSecurePassword() {
@@ -2818,9 +2927,14 @@ export default function App() {
           onResetSecurePassword={() => resetSecurePassword()}
           onRotateRecoveryKey={rotateRecoveryKey}
           onRecoverSecurePassword={recoverSecurePassword}
+          onDisableSecureChat={disableSecureChat}
           onBack={() => setSelected(null)}
         />
       )}
+      <SecureSecretDialog
+        dialog={secureSecretDialog}
+        onClose={() => setSecureSecretDialog(null)}
+      />
     </main>
   );
 }
