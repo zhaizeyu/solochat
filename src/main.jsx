@@ -1730,16 +1730,16 @@ function ChatWindow({
           {secureChat.status === 'off' && (
             <Button type="button" variant="primary" onClick={() => runSecureAction(onEnableSecureChat)} disabled={!secureChatSupported}>开启安全聊天</Button>
           )}
-          {secureChat.status !== 'off' && !secureChat.unlocked && (
+          {secureChat.status !== 'off' && !secureChat.unlocked && secureChat.hasUserWrappedKey && (
             <Button type="button" variant="primary" onClick={() => runSecureAction(onUnlockSecureChat)} disabled={!secureChatSupported}>解锁聊天</Button>
           )}
           {secureChat.status !== 'off' && secureChat.unlocked && (
             <Button type="button" onClick={() => runSecureAction(onLockSecureChat)}>锁定安全聊天</Button>
           )}
           {secureChat.canCompletePairing && (
-            <Button type="button" variant="primary" onClick={() => runSecureAction(onCompleteSecurePairing)} disabled={!secureChatSupported}>完成安全配对</Button>
+            <Button type="button" variant="primary" onClick={() => runSecureAction(onCompleteSecurePairing)} disabled={!secureChatSupported}>设置密码并关联</Button>
           )}
-          {secureChat.status !== 'off' && !secureChat.unlocked && (
+          {secureChat.status !== 'off' && !secureChat.unlocked && secureChat.hasUserWrappedKey && secureChat.hasRecoveryWrappedKey && (
             <Button type="button" onClick={() => runSecureAction(onRecoverSecurePassword)} disabled={!secureChatSupported}>使用恢复密钥恢复</Button>
           )}
           {secureChat.status !== 'off' && secureChat.unlocked && (
@@ -1748,7 +1748,7 @@ function ChatWindow({
               <Button type="button" onClick={() => runSecureAction(onRotateRecoveryKey)}>更换恢复密钥</Button>
             </>
           )}
-          {secureChat.status !== 'off' && (
+          {secureChat.status !== 'off' && secureChat.hasUserWrappedKey && (
             <Button type="button" variant="danger" onClick={() => runSecureAction(onDisableSecureChat)}>关闭安全聊天</Button>
           )}
         </div>
@@ -2384,6 +2384,8 @@ export default function App() {
       conversationId: material?.conversation?.conversationId || (user && contactId ? makeConversationId(user.id, contactId) : ''),
       keyVersion: material?.conversation?.currentKeyVersion || 1,
       recoveryOwnerUserId: material?.conversation?.recoveryOwnerUserId || null,
+      hasUserWrappedKey: Boolean(material?.userWrappedKey),
+      hasRecoveryWrappedKey: Boolean(material?.recoveryWrappedKey),
       canCompletePairing: Boolean(
         pairing &&
         material?.pairingWrappedKey &&
@@ -2641,6 +2643,8 @@ export default function App() {
       conversationId: secureChat.conversationId,
       keyVersion: 1,
       recoveryOwnerUserId: null,
+      hasUserWrappedKey: false,
+      hasRecoveryWrappedKey: false,
       canCompletePairing: false
     });
     await loadLatestMessages(selectedId);

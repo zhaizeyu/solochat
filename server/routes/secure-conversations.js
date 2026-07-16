@@ -207,6 +207,11 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     if (!context) return json(res, 404, { message: '安全聊天不存在' });
     const secure = await db.prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(context.conversationId);
     if (!secure || secure.status === 'off') return json(res, 200, { ok: true, status: 'off' });
+    const own = await db.prepare(`
+      SELECT 1 FROM user_wrapped_conversation_keys
+      WHERE conversation_id = ? AND user_id = ? AND key_version = ?
+    `).get(context.conversationId, user.id, secure.current_key_version);
+    if (!own) return json(res, 403, { message: '请先完成安全配对' });
     const now = new Date().toISOString();
     await execTransaction(async () => {
       await db.prepare(`

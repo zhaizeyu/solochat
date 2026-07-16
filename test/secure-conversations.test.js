@@ -3,6 +3,12 @@ import crypto from 'node:crypto';
 import test from 'node:test';
 import { addContact, call, hasDatabase, register, sendMessage, state } from '../test-support/helpers.js';
 
+const runId = `${process.pid}_${Date.now()}`.replace(/[^a-zA-Z0-9_]/g, '_');
+
+function testUsername(name) {
+  return `${name}_${runId}`.slice(0, 20);
+}
+
 function b64(bytes) {
   return crypto.randomBytes(bytes).toString('base64');
 }
@@ -75,8 +81,8 @@ async function completePairing(bob, conversationId, pairingId) {
 }
 
 test('secure chat stores wrapped keys and blocks plaintext message fallback', { skip: !hasDatabase }, async () => {
-  const alice = await register('secure_enable_a');
-  const bob = await register('secure_enable_b');
+  const alice = await register(testUsername('secure_enable_a'));
+  const bob = await register(testUsername('secure_enable_b'));
   await addContact(alice, bob.username);
 
   const conversationId = await enableSecureChat(alice, bob);
@@ -101,8 +107,8 @@ test('secure chat stores wrapped keys and blocks plaintext message fallback', { 
 });
 
 test('key material reports off for valid conversations without secure chat', { skip: !hasDatabase }, async () => {
-  const alice = await register('secure_off_a');
-  const bob = await register('secure_off_b');
+  const alice = await register(testUsername('secure_off_a'));
+  const bob = await register(testUsername('secure_off_b'));
   await addContact(alice, bob.username);
   const conversationId = state.conversationKey(alice.id, bob.id);
 
@@ -117,11 +123,18 @@ test('key material reports off for valid conversations without secure chat', { s
 });
 
 test('secure chat can be disabled and re-enabled with fresh key material', { skip: !hasDatabase }, async () => {
-  const alice = await register('secure_disable_a');
-  const bob = await register('secure_disable_b');
+  const alice = await register(testUsername('secure_disable_a'));
+  const bob = await register(testUsername('secure_disable_b'));
   await addContact(alice, bob.username);
 
   const conversationId = await enableSecureChat(alice, bob);
+  const blockedPeerDisable = await call(state.handleSecureConversations, {
+    method: 'DELETE',
+    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}`,
+    user: bob
+  });
+  assert.equal(blockedPeerDisable.status, 403);
+
   const disabled = await call(state.handleSecureConversations, {
     method: 'DELETE',
     path: `/api/secure-conversations/${encodeURIComponent(conversationId)}`,
@@ -160,8 +173,8 @@ test('secure chat can be disabled and re-enabled with fresh key material', { ski
 });
 
 test('key material still hides non-contact conversations', { skip: !hasDatabase }, async () => {
-  const alice = await register('secure_off_block_a');
-  const bob = await register('secure_off_block_b');
+  const alice = await register(testUsername('secure_off_block_a'));
+  const bob = await register(testUsername('secure_off_block_b'));
   const conversationId = state.conversationKey(alice.id, bob.id);
 
   const material = await call(state.handleSecureConversations, {
@@ -173,8 +186,8 @@ test('key material still hides non-contact conversations', { skip: !hasDatabase 
 });
 
 test('pairing can be completed once and enables encrypted messages', { skip: !hasDatabase }, async () => {
-  const alice = await register('secure_pair_a');
-  const bob = await register('secure_pair_b');
+  const alice = await register(testUsername('secure_pair_a'));
+  const bob = await register(testUsername('secure_pair_b'));
   await addContact(alice, bob.username);
 
   const conversationId = await enableSecureChat(alice, bob);
@@ -217,8 +230,8 @@ test('pairing can be completed once and enables encrypted messages', { skip: !ha
 });
 
 test('encrypted messages reject repeated sequence numbers and bad IVs', { skip: !hasDatabase }, async () => {
-  const alice = await register('secure_replay_a');
-  const bob = await register('secure_replay_b');
+  const alice = await register(testUsername('secure_replay_a'));
+  const bob = await register(testUsername('secure_replay_b'));
   await addContact(alice, bob.username);
 
   const conversationId = await enableSecureChat(alice, bob);
@@ -259,8 +272,8 @@ test('encrypted messages reject repeated sequence numbers and bad IVs', { skip: 
 });
 
 test('legacy plaintext messaging still works outside secure conversations', { skip: !hasDatabase }, async () => {
-  const alice = await register('secure_plain_a');
-  const bob = await register('secure_plain_b');
+  const alice = await register(testUsername('secure_plain_a'));
+  const bob = await register(testUsername('secure_plain_b'));
   await addContact(alice, bob.username);
   const message = await sendMessage(alice, bob.id, 'plain outside secure mode');
   assert.equal(message.text, 'plain outside secure mode');
