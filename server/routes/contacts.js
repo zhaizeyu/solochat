@@ -15,74 +15,101 @@ export async function handleContacts(req, res, pathName, user) {
 
   if (req.method === 'GET' && pathName === '/api/contacts') {
     const rows = await db.prepare(`
-      SELECT *
-      FROM (
-        SELECT
-          ${userSelect('u.')},
-          (
-            SELECT m.text
-            FROM messages m
-            WHERE m.conversation_id =
-              CASE WHEN ? < u.id THEN ? || ':' || u.id ELSE u.id || ':' || ? END
-            ORDER BY m.created_at DESC
-            LIMIT 1
-          ) AS "lastText",
-          (
-            SELECT m.kind
-            FROM messages m
-            WHERE m.conversation_id =
-              CASE WHEN ? < u.id THEN ? || ':' || u.id ELSE u.id || ':' || ? END
-            ORDER BY m.created_at DESC
-            LIMIT 1
-          ) AS "lastKind",
-          (
-            SELECT m.recalled_at
-            FROM messages m
-            WHERE m.conversation_id =
-              CASE WHEN ? < u.id THEN ? || ':' || u.id ELSE u.id || ':' || ? END
-            ORDER BY m.created_at DESC
-            LIMIT 1
-          ) AS "lastRecalledAt",
-          (
-            SELECT m.created_at
-            FROM messages m
-            WHERE m.conversation_id =
-              CASE WHEN ? < u.id THEN ? || ':' || u.id ELSE u.id || ':' || ? END
-            ORDER BY m.created_at DESC
-            LIMIT 1
-          ) AS "lastMessageAt",
-          (
-            SELECT COUNT(*)::int
-            FROM messages m
-            WHERE m.conversation_id =
-              CASE WHEN ? < u.id THEN ? || ':' || u.id ELSE u.id || ':' || ? END
-              AND m.to_id = ?
-              AND m.read_at IS NULL
-              AND m.recalled_at IS NULL
-          ) AS "unreadCount"
-        FROM contacts c
-        JOIN users u ON u.id = c.contact_id
-        WHERE c.owner_id = ? AND u.disabled_at IS NULL
-      ) contacts_with_messages
-      ORDER BY COALESCE("lastMessageAt", '') DESC
+      SELECT
+        ${userSelect('u.')},
+        last_plain.text AS "lastText",
+        last_plain.kind AS "lastKind",
+        last_plain.recalled_at AS "lastRecalledAt",
+        CASE
+          WHEN last_plain.created_at IS NULL THEN last_encrypted.created_at
+          WHEN last_encrypted.created_at IS NULL THEN last_plain.created_at
+          WHEN last_plain.created_at >= last_encrypted.created_at THEN last_plain.created_at
+          ELSE last_encrypted.created_at
+        END AS "lastMessageAt",
+        (
+          COALESCE(plain_unread.unread_count, 0)
+          + COALESCE(encrypted_unread.unread_count, 0)
+        )::int AS "unreadCount",
+        last_encrypted.created_at AS "lastEncryptedAt"
+      FROM contacts c
+      JOIN users u ON u.id = c.contact_id
+      LEFT JOIN LATERAL (
+        SELECT m.text, m.kind, m.recalled_at, m.created_at
+        FROM messages m
+        WHERE m.conversation_id = CASE
+          WHEN ? < u.id THEN ? || ':' || u.id
+          ELSE u.id || ':' || ?
+        END
+        ORDER BY m.created_at DESC
+        LIMIT 1
+      ) last_plain ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT e.created_at
+        FROM encrypted_messages e
+        WHERE e.conversation_id = CASE
+          WHEN ? < u.id THEN ? || ':' || u.id
+          ELSE u.id || ':' || ?
+        END
+        ORDER BY e.created_at DESC
+        LIMIT 1
+      ) last_encrypted ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS unread_count
+        FROM messages m
+        WHERE m.conversation_id = CASE
+          WHEN ? < u.id THEN ? || ':' || u.id
+          ELSE u.id || ':' || ?
+        END
+          AND m.to_id = ?
+          AND m.read_at IS NULL
+          AND m.recalled_at IS NULL
+      ) plain_unread ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT COUNT(*)::int AS unread_count
+        FROM encrypted_messages e
+        WHERE e.conversation_id = CASE
+          WHEN ? < u.id THEN ? || ':' || u.id
+          ELSE u.id || ':' || ?
+        END
+          AND e.recipient_id = ?
+          AND e.read_at IS NULL
+          AND e.recalled_at IS NULL
+      ) encrypted_unread ON TRUE
+      WHERE c.owner_id = ? AND u.disabled_at IS NULL
+      ORDER BY COALESCE(
+        CASE
+          WHEN last_plain.created_at IS NULL THEN last_encrypted.created_at
+          WHEN last_encrypted.created_at IS NULL THEN last_plain.created_at
+          WHEN last_plain.created_at >= last_encrypted.created_at THEN last_plain.created_at
+          ELSE last_encrypted.created_at
+        END,
+        ''
+      ) DESC
     `).all(
       user.id, user.id, user.id,
       user.id, user.id, user.id,
-      user.id, user.id, user.id,
-      user.id, user.id, user.id,
+      user.id, user.id, user.id, user.id,
       user.id, user.id, user.id, user.id,
       user.id
     );
-    const contacts = rows.map((row) => ({
-      ...sanitizeUser(rowToUser(row)),
-      lastMessage: messagePreview({
-        text: row.lastText || '',
-        kind: row.lastKind || 'text',
-        recalledAt: row.lastRecalledAt || null
-      }),
-      lastMessageAt: row.lastMessageAt || null,
-      unreadCount: row.unreadCount
-    }));
+    const contacts = rows.map((row) => {
+      const encryptedIsLatest = Boolean(
+        row.lastEncryptedAt
+        && String(row.lastEncryptedAt) === String(row.lastMessageAt)
+      );
+      return {
+        ...sanitizeUser(rowToUser(row)),
+        lastMessage: encryptedIsLatest
+          ? '[加密消息]'
+          : messagePreview({
+            text: row.lastText || '',
+            kind: row.lastKind || 'text',
+            recalledAt: row.lastRecalledAt || null
+          }),
+        lastMessageAt: row.lastMessageAt || null,
+        unreadCount: row.unreadCount
+      };
+    });
     return json(res, 200, { contacts });
   }
 

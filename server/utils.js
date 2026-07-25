@@ -7,9 +7,18 @@ export function hashPassword(password, salt = crypto.randomBytes(16).toString('h
 
 export function verifyPassword(password, stored) {
   const [salt, expected] = String(stored || '').split(':');
-  if (!salt || !expected) return false;
+  if (!salt || !expected || expected.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(expected)) {
+    return false;
+  }
+  let expectedBytes;
+  try {
+    expectedBytes = Buffer.from(expected, 'hex');
+  } catch {
+    return false;
+  }
   const actual = crypto.scryptSync(password, salt, 64);
-  return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), actual);
+  if (expectedBytes.length !== actual.length) return false;
+  return crypto.timingSafeEqual(expectedBytes, actual);
 }
 
 export function normalizeName(name) {

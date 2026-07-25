@@ -12,12 +12,13 @@ process.env.R2_SECRET_ACCESS_KEY ||= 'test-secret-key';
 process.env.S3_API_ENDPOINT ||= 'https://r2.test';
 process.env.USE_LOCAL = 'true';
 
-const { localUploadsDir } = await import('../server/config.js');
+const { localUploadsDir, uploadToR2 } = await import('../server/config.js');
 const {
   cleanupOrphanedMomentImages,
   deleteMomentImageVariants,
   deleteStoredImage,
   findOrphanedMomentImageKeys,
+  localPublicUrlForObjectKey,
   objectKeyFromStoredImageUrl,
   r2PublicUrlForObjectKey
 } = await import('../server/uploads.js');
@@ -25,6 +26,10 @@ import { addContact, addMoment, call, count, hasDatabase, register, state } from
 
 const originalFetch = globalThis.fetch;
 const r2Objects = new Map();
+
+function publicUrlForObjectKey(objectKey) {
+  return uploadToR2 ? r2PublicUrlForObjectKey(objectKey) : localPublicUrlForObjectKey(objectKey);
+}
 
 function installR2Mock() {
   globalThis.fetch = async (url, options = {}) => {
@@ -63,8 +68,7 @@ async function resetMomentStorage() {
   r2Objects.clear();
   const momentsDir = path.join(localUploadsDir, 'moments');
   if (!existsSync(momentsDir)) return;
-  const { readdir, rm } = await import('node:fs/promises');
-  for (const entry of await readdir(momentsDir)) {
+  for (const entry of await (await import('node:fs/promises')).readdir(momentsDir)) {
     await unlink(path.join(momentsDir, entry)).catch(() => {});
   }
 }
@@ -79,16 +83,16 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-test('deleteStoredImage removes local and R2 copies', async () => {
+test('deleteStoredImage removes local and optional R2 copies', async () => {
   const objectKey = 'moments/sample.jpg';
   const localPath = path.join(localUploadsDir, objectKey);
   await mkdir(path.dirname(localPath), { recursive: true });
   await writeFile(localPath, Buffer.from('local-image'));
-  r2Objects.set(objectKey, Buffer.from('remote-image'));
+  if (uploadToR2) r2Objects.set(objectKey, Buffer.from('remote-image'));
 
-  const result = await deleteStoredImage(r2PublicUrlForObjectKey(objectKey));
+  const result = await deleteStoredImage(publicUrlForObjectKey(objectKey));
   assert.equal(result.objectKey, objectKey);
-  assert.equal(result.r2, true);
+  assert.equal(result.r2, uploadToR2);
   assert.equal(result.local, true);
   assert.equal(r2Objects.has(objectKey), false);
   assert.equal(existsSync(localPath), false);
@@ -98,21 +102,41 @@ test('deleteMomentImageVariants removes alternate extensions', async () => {
   const momentId = 'abc-123';
   const pngKey = `moments/${momentId}.png`;
   const jpgKey = `moments/${momentId}.jpg`;
-  r2Objects.set(pngKey, Buffer.from('png'));
-  r2Objects.set(jpgKey, Buffer.from('jpg'));
+  const pngPath = path.join(localUploadsDir, pngKey);
+  const jpgPath = path.join(localUploadsDir, jpgKey);
+  await mkdir(path.dirname(pngPath), { recursive: true });
+  await writeFile(pngPath, Buffer.from('png'));
+  await writeFile(jpgPath, Buffer.from('jpg'));
+  if (uploadToR2) {
+    r2Objects.set(pngKey, Buffer.from('png'));
+    r2Objects.set(jpgKey, Buffer.from('jpg'));
+  }
 
   const deleted = await deleteMomentImageVariants(momentId, jpgKey);
-  assert.ok(deleted.r2.includes(pngKey));
-  assert.equal(r2Objects.has(pngKey), false);
-  assert.equal(r2Objects.has(jpgKey), true);
+  if (uploadToR2) {
+    assert.ok(deleted.r2.includes(pngKey));
+    assert.equal(r2Objects.has(pngKey), false);
+    assert.equal(r2Objects.has(jpgKey), true);
+  } else {
+    assert.ok(deleted.local.includes(pngKey));
+    assert.equal(existsSync(pngPath), false);
+    assert.equal(existsSync(jpgPath), true);
+  }
 });
 
 test('cleanupOrphanedMomentImages removes files not referenced by active moments', { skip: !hasDatabase }, async () => {
   const db = state.getDb();
   const keepKey = 'moments/keep-me.jpg';
   const orphanKey = 'moments/orphan-me.png';
-  r2Objects.set(keepKey, Buffer.from('keep'));
-  r2Objects.set(orphanKey, Buffer.from('orphan'));
+  const keepPath = path.join(localUploadsDir, keepKey);
+  const orphanPath = path.join(localUploadsDir, orphanKey);
+  await mkdir(path.dirname(keepPath), { recursive: true });
+  await writeFile(keepPath, Buffer.from('keep'));
+  await writeFile(orphanPath, Buffer.from('orphan'));
+  if (uploadToR2) {
+    r2Objects.set(keepKey, Buffer.from('keep'));
+    r2Objects.set(orphanKey, Buffer.from('orphan'));
+  }
 
   const momentId = crypto.randomUUID();
   await db.prepare(`
@@ -126,7 +150,7 @@ test('cleanupOrphanedMomentImages removes files not referenced by active moments
     'author',
     'keep',
     '2026-07-05',
-    r2PublicUrlForObjectKey(keepKey),
+    publicUrlForObjectKey(keepKey),
     new Date().toISOString(),
     new Date().toISOString(),
     null
@@ -136,9 +160,15 @@ test('cleanupOrphanedMomentImages removes files not referenced by active moments
   assert.deepEqual(preview.orphaned, [orphanKey]);
 
   const cleaned = await cleanupOrphanedMomentImages(db);
-  assert.deepEqual(cleaned.deletedR2, [orphanKey]);
-  assert.equal(r2Objects.has(orphanKey), false);
-  assert.equal(r2Objects.has(keepKey), true);
+  if (uploadToR2) {
+    assert.deepEqual(cleaned.deletedR2, [orphanKey]);
+    assert.equal(r2Objects.has(orphanKey), false);
+    assert.equal(r2Objects.has(keepKey), true);
+  } else {
+    assert.deepEqual(cleaned.deletedLocal, [orphanKey]);
+    assert.equal(existsSync(orphanPath), false);
+    assert.equal(existsSync(keepPath), true);
+  }
 
   await db.prepare('DELETE FROM couple_moments WHERE id = ?').run(momentId);
 });
@@ -153,7 +183,9 @@ test('deleting or clearing a moment image removes stored files', { skip: !hasDat
   const moment = await addMoment(alice, bob.id, 'with image', { imageDataUrl });
   const objectKey = objectKeyFromStoredImageUrl(moment.imageDataUrl);
   assert.ok(objectKey);
-  assert.equal(r2Objects.has(objectKey), true);
+  const localPath = path.join(localUploadsDir, objectKey);
+  assert.equal(existsSync(localPath), true);
+  if (uploadToR2) assert.equal(r2Objects.has(objectKey), true);
 
   const cleared = await call(state.handleMoments, {
     method: 'PATCH',
@@ -163,12 +195,14 @@ test('deleting or clearing a moment image removes stored files', { skip: !hasDat
   });
   assert.equal(cleared.status, 200);
   assert.equal(cleared.body.moments[0].imageDataUrl, '');
+  assert.equal(existsSync(localPath), false);
   assert.equal(r2Objects.has(objectKey), false);
 
   const recreated = await addMoment(alice, bob.id, 'delete image', { imageDataUrl });
   const deleteKey = objectKeyFromStoredImageUrl(recreated.imageDataUrl);
   assert.ok(deleteKey);
-  assert.equal(r2Objects.has(deleteKey), true);
+  const deletePath = path.join(localUploadsDir, deleteKey);
+  assert.equal(existsSync(deletePath), true);
 
   const removed = await call(state.handleMoments, {
     method: 'DELETE',
@@ -176,6 +210,7 @@ test('deleting or clearing a moment image removes stored files', { skip: !hasDat
     user: alice
   });
   assert.equal(removed.status, 200);
+  assert.equal(existsSync(deletePath), false);
   assert.equal(r2Objects.has(deleteKey), false);
   assert.equal(await count('SELECT COUNT(*)::int AS count FROM couple_moments WHERE id = ? AND deleted_at IS NULL', recreated.id), 0);
 });

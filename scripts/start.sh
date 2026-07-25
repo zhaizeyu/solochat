@@ -21,9 +21,20 @@ fi
 
 cd "$ROOT_DIR"
 
+if [[ -f "$ROOT_DIR/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT_DIR/.env"
+  set +a
+fi
+
 if [[ ! -d node_modules ]]; then
   echo "node_modules not found. Run npm install first."
   exit 1
+fi
+
+if [[ "${TEST_MODE:-false}" == "true" || "${USE_HTTPS:-false}" == "true" ]]; then
+  bash "$ROOT_DIR/scripts/ensure-certs.sh"
 fi
 
 echo "Building app..."
@@ -36,7 +47,11 @@ echo "$PID" >"$PID_FILE"
 sleep 1
 if kill -0 "$PID" 2>/dev/null; then
   echo "App started. PID: $PID"
-  echo "App: http://localhost:${PORT:-3101}"
+  if [[ "${TEST_MODE:-false}" == "true" || "${USE_HTTPS:-false}" == "true" ]]; then
+    echo "App: https://localhost:${PORT:-3101}"
+  else
+    echo "App: http://localhost:${PORT:-3101}"
+  fi
   echo "Log: $LOG_FILE"
 else
   rm -f "$PID_FILE"

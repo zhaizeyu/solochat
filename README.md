@@ -9,6 +9,7 @@
 - 发送文字和自定义图片表情，收藏对方发来的表情
 - 引用消息、已读状态与 8 分钟内撤回
 - 为每段会话创建共同计划，并由双方分别确认完成
+- 可选安全聊天：端到端加密正文，密码解锁，邀请链接配对
 - 响应式桌面端与移动端界面
 - 管理员查看用户状态及清理用户数据
 - PostgreSQL 持久化，Cloudflare R2 图片存储
@@ -70,8 +71,17 @@ PORT=3101
 
 数据库也可以使用 `PGHOST`、`PGPORT`、`PGUSER`、`PGPASSWORD` 和 `PGDATABASE` 分项配置。若同时提供，`DATABASE_URL` 优先。
 
-> R2 配置目前是必填项。`USE_LOCAL=true` 会将 R2 图片镜像到本地，而不是替代 R2；本地目录默认为 `data/uploads`，可通过 `LOCAL_UPLOADS_DIR` 修改。
-> `TEST_MODE=true` 时会使用 `TEST_DATABASE_URL`，并且图片只保存到本地 `/uploads/...`，不会上传、同步或删除 R2 对象。
+> R2 配置目前是必填项（`TEST_MODE=true` 时除外）。`USE_LOCAL=true` 会将 R2 图片镜像到本地，而不是替代 R2；本地目录默认为 `data/uploads`，可通过 `LOCAL_UPLOADS_DIR` 修改。
+> `TEST_MODE=true` 时会使用 `TEST_DATABASE_URL`，图片只保存到本地 `/uploads/...`，不会上传、同步或删除 R2 对象；并且默认启用 HTTPS（自签证书），因为安全聊天依赖浏览器安全上下文（`crypto.subtle`）。访问地址为 `https://主机:PORT`，需在浏览器中信任自签证书。
+
+### 安全聊天（简版）
+
+1. 双方已是联系人，且通过 **HTTPS** 打开站点。
+2. 一方点「安全」→「开启」，设置密码；保存恢复密钥，并把邀请链接发给对方。
+3. 对方打开邀请链接（或粘贴链接）→「加入并设密码」。
+4. 之后各自用密码解锁即可收发加密消息；刷新页面需重新解锁。
+
+服务器只保存封装密钥与密文，看不到明文。关闭安全聊天会使现有密码/恢复密钥失效；旧密文不会自动删除。
 
 ### 3. 启动应用
 
@@ -166,8 +176,13 @@ app/                 Next.js App Router 入口
 components/ui/       基础 UI 组件
 server/              HTTP 服务、数据库与 API 路由
 server/routes/       认证、联系人、消息、计划等接口
-src/main.jsx         前端应用主体
-src/styles.css       全局样式
+src/App.jsx            应用壳（会话、安全聊天状态机）
+src/components/        UI 面板（Auth / Chat / Admin / Planner / Moments / Secure…）
+src/api/client.js      前端 API 客户端
+src/lib/               共享 UI 与媒体工具
+src/secure-crypto.js   端到端加密
+src/styles.css         全局样式
+src/main.jsx           入口 re-export → App.jsx
 scripts/             开发及进程管理脚本
 test/                Node.js 测试用例
 test-support/        测试数据库隔离与请求 helper

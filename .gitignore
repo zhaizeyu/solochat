@@ -6,3 +6,7 @@ logs/
 .env
 data/
 public/xhs-promo/
+e2e-report/
+test-results/
+playwright-report/
+blob-report/

@@ -2,12 +2,68 @@ import {
   execTransaction,
   getDb,
   getUserById,
-  rowToUser,
-  sanitizeAdminUser,
-  userSelect
+  listAdminUsers,
+  sanitizeAdminUser
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
 import { hashPassword } from '../utils.js';
+
+async function deleteUserOwnedData(db, targetId) {
+  const likeLeft = `${targetId}:%`;
+  const likeRight = `%:${targetId}`;
+
+  await db.prepare(`
+    DELETE FROM planner_confirmations
+    WHERE user_id = ?
+       OR task_id IN (
+         SELECT id FROM planner_tasks
+         WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+       )
+  `).run(targetId, targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM planner_tasks
+    WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, likeLeft, likeRight);
+
+  await db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(targetId, targetId);
+  await db.prepare('DELETE FROM messages WHERE from_id = ? OR to_id = ?').run(targetId, targetId);
+  await db.prepare(`
+    DELETE FROM encrypted_messages
+    WHERE sender_id = ? OR recipient_id = ?
+       OR conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, targetId, targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM user_wrapped_conversation_keys
+    WHERE user_id = ? OR conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM recovery_wrapped_conversation_keys
+    WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM secure_handshake_keys
+    WHERE user_id = ? OR conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM secure_pairing_keys
+    WHERE created_by_user_id = ? OR conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM secure_audit_events
+    WHERE user_id = ? OR conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM secure_conversations
+    WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, likeLeft, likeRight);
+  await db.prepare(`
+    DELETE FROM couple_moments
+    WHERE author_id = ? OR conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?
+  `).run(targetId, targetId, likeLeft, likeRight);
+  await db.prepare('DELETE FROM stickers WHERE owner_id = ?').run(targetId);
+  await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);
+  await db.prepare('DELETE FROM users WHERE id = ?').run(targetId);
+}
 
 export async function handleAdmin(req, res, pathName, user) {
   if (!pathName.startsWith('/api/admin/')) return false;
@@ -17,11 +73,7 @@ export async function handleAdmin(req, res, pathName, user) {
   const db = getDb();
 
   if (req.method === 'GET' && pathName === '/api/admin/users') {
-    const baseUsers = (await db
-      .prepare(`SELECT ${userSelect()} FROM users ORDER BY created_at DESC`)
-      .all())
-      .map(rowToUser)
-    const users = await Promise.all(baseUsers.map(sanitizeAdminUser));
+    const users = await listAdminUsers();
     return json(res, 200, { users });
   }
 
@@ -39,7 +91,10 @@ export async function handleAdmin(req, res, pathName, user) {
     if (password.length < 6) {
       return json(res, 400, { message: '密码至少 6 位' });
     }
-    await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), target.id);
+    await execTransaction(async () => {
+      await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), target.id);
+      await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(target.id);
+    });
     return json(res, 200, { user: await sanitizeAdminUser(await getUserById(target.id)) });
   }
 
@@ -56,21 +111,7 @@ export async function handleAdmin(req, res, pathName, user) {
       return json(res, 400, { message: '不能清理管理员账号' });
     }
     await execTransaction(async () => {
-      const taskIds = (await db
-        .prepare(`SELECT id FROM planner_tasks WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?`)
-        .all(target.id, `${target.id}:%`, `%:${target.id}`))
-        .map((task) => task.id);
-      for (const taskId of taskIds) {
-        await db.prepare('DELETE FROM planner_confirmations WHERE task_id = ?').run(taskId);
-      }
-      await db.prepare(`DELETE FROM planner_confirmations WHERE user_id = ?`).run(target.id);
-      await db.prepare(`DELETE FROM planner_tasks WHERE conversation_id = ? OR conversation_id LIKE ? OR conversation_id LIKE ?`)
-        .run(target.id, `${target.id}:%`, `%:${target.id}`);
-      await db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(target.id, target.id);
-      await db.prepare('DELETE FROM messages WHERE from_id = ? OR to_id = ?').run(target.id, target.id);
-      await db.prepare('DELETE FROM stickers WHERE owner_id = ?').run(target.id);
-      await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(target.id);
-      await db.prepare('DELETE FROM users WHERE id = ?').run(target.id);
+      await deleteUserOwnedData(db, target.id);
     });
     return json(res, 200, { ok: true });
   }

@@ -401,6 +401,21 @@ async function createSchema() {
     CREATE INDEX IF NOT EXISTS idx_secure_pairing_keys_conversation
       ON secure_pairing_keys(conversation_id, used_at, expires_at);
 
+    CREATE TABLE IF NOT EXISTS secure_handshake_keys (
+      conversation_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      public_key TEXT NOT NULL,
+      wrapped_private_key TEXT NOT NULL DEFAULT '',
+      wrap_algorithm TEXT,
+      wrap_iv TEXT,
+      kdf_algorithm TEXT,
+      kdf_salt TEXT,
+      kdf_parameters TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (conversation_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS encrypted_messages (
       message_id TEXT PRIMARY KEY,
       conversation_id TEXT NOT NULL,
@@ -431,6 +446,12 @@ async function createSchema() {
       event_type TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE INDEX IF NOT EXISTS idx_secure_audit_events_conversation
+      ON secure_audit_events(conversation_id, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_encrypted_messages_sender
+      ON encrypted_messages(sender_id, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS planner_tasks (
       id TEXT PRIMARY KEY,
@@ -473,6 +494,8 @@ async function createSchema() {
       ON couple_moments(conversation_id, created_at DESC);
   `);
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT \'\'');
+  await query('ALTER TABLE secure_conversations ADD COLUMN IF NOT EXISTS close_requested_by TEXT');
+  await query('ALTER TABLE secure_conversations ADD COLUMN IF NOT EXISTS close_requested_at TEXT');
 }
 
 export function releaseDeletedUsername(user) {
@@ -562,11 +585,14 @@ export async function getAuthUser(req) {
 export async function sanitizeAdminUser(user) {
   const counts = await getDb().prepare(`
     SELECT
-      (SELECT COUNT(*)::int FROM messages WHERE from_id = ? OR to_id = ?) AS "messageCount",
+      (
+        (SELECT COUNT(*)::int FROM messages WHERE from_id = ? OR to_id = ?)
+        + (SELECT COUNT(*)::int FROM encrypted_messages WHERE sender_id = ? OR recipient_id = ?)
+      ) AS "messageCount",
       (SELECT COUNT(*)::int FROM contacts WHERE owner_id = ? OR contact_id = ?) AS "contactCount",
       (SELECT COUNT(*)::int FROM stickers WHERE owner_id = ?) AS "stickerCount",
       (SELECT MAX(created_at) FROM sessions WHERE user_id = ?) AS "lastLoginAt"
-  `).get(user.id, user.id, user.id, user.id, user.id, user.id);
+  `).get(user.id, user.id, user.id, user.id, user.id, user.id, user.id, user.id);
   return {
     ...sanitizeUser(user),
     avatarDataUrl: '',
@@ -576,6 +602,62 @@ export async function sanitizeAdminUser(user) {
     stickerCount: counts.stickerCount,
     lastLoginAt: counts.lastLoginAt || null
   };
+}
+
+export async function listAdminUsers() {
+  const db = getDb();
+  const baseUsers = (await db.prepare(`SELECT ${userSelect()} FROM users ORDER BY created_at DESC`).all()).map(rowToUser);
+  if (!baseUsers.length) return [];
+
+  const [messageRows, contactRows, stickerRows, loginRows] = await Promise.all([
+    db.prepare(`
+      SELECT user_id AS "userId", SUM(cnt)::int AS "messageCount"
+      FROM (
+        SELECT from_id AS user_id, COUNT(*)::int AS cnt FROM messages GROUP BY from_id
+        UNION ALL
+        SELECT to_id AS user_id, COUNT(*)::int AS cnt FROM messages GROUP BY to_id
+        UNION ALL
+        SELECT sender_id AS user_id, COUNT(*)::int AS cnt FROM encrypted_messages GROUP BY sender_id
+        UNION ALL
+        SELECT recipient_id AS user_id, COUNT(*)::int AS cnt FROM encrypted_messages GROUP BY recipient_id
+      ) counts
+      GROUP BY user_id
+    `).all(),
+    db.prepare(`
+      SELECT user_id AS "userId", SUM(cnt)::int AS "contactCount"
+      FROM (
+        SELECT owner_id AS user_id, COUNT(*)::int AS cnt FROM contacts GROUP BY owner_id
+        UNION ALL
+        SELECT contact_id AS user_id, COUNT(*)::int AS cnt FROM contacts GROUP BY contact_id
+      ) counts
+      GROUP BY user_id
+    `).all(),
+    db.prepare(`
+      SELECT owner_id AS "userId", COUNT(*)::int AS "stickerCount"
+      FROM stickers
+      GROUP BY owner_id
+    `).all(),
+    db.prepare(`
+      SELECT user_id AS "userId", MAX(created_at) AS "lastLoginAt"
+      FROM sessions
+      GROUP BY user_id
+    `).all()
+  ]);
+
+  const messageCountByUser = new Map(messageRows.map((row) => [row.userId, row.messageCount]));
+  const contactCountByUser = new Map(contactRows.map((row) => [row.userId, row.contactCount]));
+  const stickerCountByUser = new Map(stickerRows.map((row) => [row.userId, row.stickerCount]));
+  const lastLoginByUser = new Map(loginRows.map((row) => [row.userId, row.lastLoginAt]));
+
+  return baseUsers.map((user) => ({
+    ...sanitizeUser(user),
+    avatarDataUrl: '',
+    deletedUsername: user.deletedUsername || null,
+    messageCount: messageCountByUser.get(user.id) || 0,
+    contactCount: contactCountByUser.get(user.id) || 0,
+    stickerCount: stickerCountByUser.get(user.id) || 0,
+    lastLoginAt: lastLoginByUser.get(user.id) || null
+  }));
 }
 
 export async function areContacts(userId, contactId) {

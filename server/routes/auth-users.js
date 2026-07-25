@@ -11,6 +11,7 @@ import {
 import { json, readBody } from '../http-utils.js';
 import { saveImageDataUrl } from '../uploads.js';
 import { hashPassword, isImageDataUrl, normalizeName, verifyPassword } from '../utils.js';
+import { applyLoginPasswordRewraps } from './secure-conversations.js';
 
 export async function handlePublicAuth(req, res, pathName) {
   const db = getDb();
@@ -44,24 +45,31 @@ export async function handlePublicAuth(req, res, pathName) {
       deletedUsername: null,
       isAdmin: false
     };
-    await db.prepare(`
-      INSERT INTO users (
-        id, username, display_name, password_hash, avatar_path, bubble_theme,
-        bio, created_at, disabled_at, deleted_username, is_admin
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      user.id,
-      user.username,
-      user.displayName,
-      user.passwordHash,
-      null,
-      user.bubbleTheme,
-      user.bio,
-      user.createdAt,
-      null,
-      null,
-      0
-    );
+    try {
+      await db.prepare(`
+        INSERT INTO users (
+          id, username, display_name, password_hash, avatar_path, bubble_theme,
+          bio, created_at, disabled_at, deleted_username, is_admin
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        user.id,
+        user.username,
+        user.displayName,
+        user.passwordHash,
+        null,
+        user.bubbleTheme,
+        user.bio,
+        user.createdAt,
+        null,
+        null,
+        0
+      );
+    } catch (error) {
+      if (error?.code === '23505' || String(error.message || '').includes('unique')) {
+        return json(res, 409, { message: '用户名已存在' });
+      }
+      throw error;
+    }
     return json(res, 201, { user: sanitizeUser(user) });
   }
 
@@ -132,6 +140,45 @@ export async function handleCurrentUser(req, res, pathName, user) {
       await db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(updates.bio, user.id);
     }
     return json(res, 200, { user: sanitizeUser(await getUserById(user.id)) });
+  }
+
+  if (req.method === 'POST' && pathName === '/api/me/verify-password') {
+    const body = await readBody(req);
+    if (!verifyPassword(String(body.password || ''), user.passwordHash)) {
+      return json(res, 401, { message: '登录密码错误' });
+    }
+    return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && pathName === '/api/me/password') {
+    const body = await readBody(req);
+    const currentPassword = String(body.currentPassword || '');
+    const newPassword = String(body.newPassword || '');
+    if (!verifyPassword(currentPassword, user.passwordHash)) {
+      return json(res, 401, { message: '当前登录密码错误' });
+    }
+    if (newPassword.length < 6) {
+      return json(res, 400, { message: '新密码至少 6 位' });
+    }
+    if (currentPassword === newPassword) {
+      return json(res, 400, { message: '新密码不能与当前密码相同' });
+    }
+    const userWrappedKeys = Array.isArray(body.userWrappedKeys) ? body.userWrappedKeys : [];
+    const handshakeKeys = Array.isArray(body.handshakeKeys) ? body.handshakeKeys : [];
+    try {
+      await execTransaction(async () => {
+        await applyLoginPasswordRewraps(user.id, userWrappedKeys, handshakeKeys);
+        await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), user.id);
+        await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
+      });
+    } catch (error) {
+      return json(res, 400, { message: error.message || '密钥重封失败' });
+    }
+    return json(res, 200, {
+      ok: true,
+      rewrappedUserKeys: userWrappedKeys.length,
+      rewrappedHandshakeKeys: handshakeKeys.length
+    });
   }
 
   if (req.method === 'DELETE' && pathName === '/api/me') {

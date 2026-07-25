@@ -1,8 +1,18 @@
 import http from 'node:http';
-import { createReadStream, existsSync } from 'node:fs';
+import https from 'node:https';
+import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import next from 'next';
-import { assertRuntimeConfig, host, port, rootDir } from './config.js';
+import {
+  assertRuntimeConfig,
+  host,
+  port,
+  rootDir,
+  testMode,
+  tlsCertPath,
+  tlsKeyPath,
+  useHttps
+} from './config.js';
 import { getAuthUser, getDb, openDb } from './db.js';
 import { json } from './http-utils.js';
 import { handleAdmin } from './routes/admin.js';
@@ -102,9 +112,9 @@ if (orphanCleanup.orphaned.length) {
 }
 await app.prepare();
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   try {
-    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const url = new URL(req.url || '/', `${useHttps ? 'https' : 'http'}://${req.headers.host || 'localhost'}`);
     if (handleStaticChunkRequest(req, res, url.pathname)) {
       return;
     }
@@ -119,8 +129,26 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     json(res, 500, { message: error.message || '服务器错误' });
   }
-});
+}
 
+function createAppServer() {
+  if (!useHttps) {
+    return http.createServer(handleRequest);
+  }
+  if (!existsSync(tlsCertPath) || !existsSync(tlsKeyPath)) {
+    throw new Error(`HTTPS 已启用，但证书不存在。请运行 scripts/ensure-certs.sh（期望 ${tlsCertPath} / ${tlsKeyPath}）`);
+  }
+  return https.createServer(
+    {
+      cert: readFileSync(tlsCertPath),
+      key: readFileSync(tlsKeyPath)
+    },
+    handleRequest
+  );
+}
+
+const server = createAppServer();
 server.listen(port, host, () => {
-  console.log(`Next.js app listening on http://${host}:${port}`);
+  const scheme = useHttps ? 'https' : 'http';
+  console.log(`Next.js app listening on ${scheme}://${host}:${port}${testMode ? ' (TEST_MODE)' : ''}`);
 });

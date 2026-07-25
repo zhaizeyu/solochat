@@ -17,7 +17,11 @@ import { conversationKey, messagePreview, parseJson, stringifyJson } from '../ut
 
 async function updateQuotesForRecalledMessage(message, now) {
   const db = getDb();
-  const rows = await db.prepare(`SELECT id, quote_json AS "quoteJson" FROM messages WHERE quote_json IS NOT NULL`).all();
+  const rows = await db.prepare(`
+    SELECT id, quote_json AS "quoteJson"
+    FROM messages
+    WHERE conversation_id = ? AND quote_json IS NOT NULL
+  `).all(message.conversationId);
   const update = db.prepare('UPDATE messages SET quote_json = ? WHERE id = ?');
   for (const row of rows) {
     const quote = parseJson(row.quoteJson);
@@ -104,12 +108,18 @@ export async function handleMessages(req, res, pathName, user, url) {
     }
     const key = conversationKey(user.id, target.id);
     const now = new Date().toISOString();
-    const result = await db.prepare(`
+    const plainResult = await db.prepare(`
       UPDATE messages
       SET read_at = ?
       WHERE conversation_id = ? AND to_id = ? AND read_at IS NULL
     `).run(now, key, user.id);
-    return json(res, 200, { ok: true, readAt: result.changes ? now : null });
+    const encryptedResult = await db.prepare(`
+      UPDATE encrypted_messages
+      SET read_at = ?
+      WHERE conversation_id = ? AND recipient_id = ? AND read_at IS NULL
+    `).run(now, key, user.id);
+    const changed = Boolean(plainResult.changes || encryptedResult.changes);
+    return json(res, 200, { ok: true, readAt: changed ? now : null });
   }
 
   if (req.method === 'PATCH' && pathName.startsWith('/api/messages/') && pathName.endsWith('/recall')) {
@@ -158,8 +168,8 @@ export async function handleMessages(req, res, pathName, user, url) {
       }
     }
     const conversationId = conversationKey(user.id, target.id);
-    if (await isSecureConversationActive(conversationId)) {
-      return json(res, 409, { message: '安全聊天已开启，请使用安全消息发送' });
+    if (kind === 'text' && (await isSecureConversationActive(conversationId))) {
+      return json(res, 409, { message: '安全聊天已开启，请使用安全消息发送文字' });
     }
     let quote = null;
     if (quoteId) {

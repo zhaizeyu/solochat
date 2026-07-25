@@ -22,7 +22,20 @@ function loadEnvFile(filePath) {
 
 loadEnvFile(new URL('../.env', import.meta.url));
 
-const baseDatabaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRESQL_URL;
+function firstNonEmptyEnv(...keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value != null && String(value).trim()) return String(value).trim();
+  }
+  return '';
+}
+
+const baseDatabaseUrl = firstNonEmptyEnv(
+  'DATABASE_URL',
+  'TEST_DATABASE_URL',
+  'POSTGRES_URL',
+  'POSTGRESQL_URL'
+);
 const schemaName = `test_solochat_${process.pid}_${Date.now()}`;
 
 export const hasDatabase = Boolean(baseDatabaseUrl);
@@ -67,6 +80,7 @@ before(async () => {
   }
 
   process.env.DATABASE_URL = databaseUrlForSchema(schemaName);
+  process.env.TEST_DATABASE_URL = process.env.DATABASE_URL;
   process.env.ADMIN_PASSWORD = 'admin123';
   process.env.USE_LOCAL = 'true';
   process.env.R2_PUBLIC_BASE_URL ||= 'https://uploads.test';

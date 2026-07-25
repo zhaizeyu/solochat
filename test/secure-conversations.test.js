@@ -28,76 +28,106 @@ function userWrappedKey(overrides = {}) {
   };
 }
 
-function recoveryWrappedKey(overrides = {}) {
-  return {
-    wrappedKey: b64(48),
-    wrapAlgorithm: 'AES-256-GCM',
-    wrapIv: b64(12),
-    recoveryVersion: 1,
-    ...overrides
-  };
+function handshakePublicKey() {
+  return b64(91);
 }
 
-async function enableSecureChat(alice, bob) {
-  const enabled = await call(state.handleSecureConversations, {
+async function inviteSecureChat(alice, bob, keyVersion = 1) {
+  const invited = await call(state.handleSecureConversations, {
     method: 'POST',
-    path: '/api/secure-conversations/enable',
+    path: '/api/secure-conversations/invite',
     user: alice,
     body: {
       contactId: bob.id,
-      userWrappedKey: userWrappedKey(),
-      recoveryWrappedKey: recoveryWrappedKey()
+      publicKey: handshakePublicKey(),
+      wrappedPrivateKey: userWrappedKey({ keyVersion })
     }
   });
-  assert.equal(enabled.status, 201);
-  return enabled.body.conversationId;
+  assert.equal(invited.status, 201, JSON.stringify(invited.body));
+  return invited.body.conversationId;
 }
 
-async function createPairing(alice, conversationId) {
-  const created = await call(state.handleSecureConversations, {
+async function acceptSecureChat(bob, conversationId, keyVersion = 1) {
+  const accepted = await call(state.handleSecureConversations, {
     method: 'POST',
-    path: '/api/secure-conversations/pairing/create',
-    user: alice,
-    body: {
-      conversationId,
-      pairingWrappedKey: recoveryWrappedKey(),
-      ttlMinutes: 30
-    }
-  });
-  assert.equal(created.status, 201);
-  return created.body.pairingId;
-}
-
-async function completePairing(bob, conversationId, pairingId) {
-  const completed = await call(state.handleSecureConversations, {
-    method: 'POST',
-    path: '/api/secure-conversations/pairing/complete',
+    path: '/api/secure-conversations/accept',
     user: bob,
     body: {
       conversationId,
-      pairingId,
-      userWrappedKey: userWrappedKey()
+      publicKey: handshakePublicKey(),
+      userWrappedKey: userWrappedKey({ keyVersion })
     }
   });
-  assert.equal(completed.status, 200);
+  assert.equal(accepted.status, 200, JSON.stringify(accepted.body));
+  return accepted.body;
 }
 
-test('secure chat stores wrapped keys and blocks plaintext message fallback', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_enable_a'));
-  const bob = await register(testUsername('secure_enable_b'));
+async function completeSecureChat(alice, conversationId, keyVersion = 1) {
+  const completed = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/secure-conversations/complete',
+    user: alice,
+    body: {
+      conversationId,
+      userWrappedKey: userWrappedKey({ keyVersion })
+    }
+  });
+  assert.equal(completed.status, 200, JSON.stringify(completed.body));
+  assert.equal(completed.body.status, 'enabled');
+}
+
+async function openSecureChat(alice, bob, keyVersion = 1) {
+  const conversationId = await inviteSecureChat(alice, bob, keyVersion);
+  await acceptSecureChat(bob, conversationId, keyVersion);
+  await completeSecureChat(alice, conversationId, keyVersion);
+  return conversationId;
+}
+
+async function bilateralClose(alice, bob, conversationId) {
+  const requested = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/secure-conversations/close/request',
+    user: alice,
+    body: { conversationId }
+  });
+  assert.equal(requested.status, 200);
+  assert.equal(requested.body.status, 'closing');
+
+  const selfConfirm = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/secure-conversations/close/confirm',
+    user: alice,
+    body: { conversationId }
+  });
+  assert.equal(selfConfirm.status, 403);
+
+  const confirmed = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/secure-conversations/close/confirm',
+    user: bob,
+    body: { conversationId }
+  });
+  assert.equal(confirmed.status, 200);
+  assert.equal(confirmed.body.status, 'off');
+}
+
+test('secure chat invite stores handshake and blocks plaintext message fallback', { skip: !hasDatabase }, async () => {
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
   await addContact(alice, bob.username);
 
-  const conversationId = await enableSecureChat(alice, bob);
+  const conversationId = await inviteSecureChat(alice, bob);
   const row = await state.getDb().prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(conversationId);
   assert.equal(row.status, 'waiting_peer');
   assert.equal(row.enabled, false);
+  assert.equal(row.recovery_owner_user_id, alice.id);
 
-  const wrapped = await state.getDb().prepare(`
-    SELECT wrapped_key, kdf_salt FROM user_wrapped_conversation_keys
+  const handshake = await state.getDb().prepare(`
+    SELECT public_key, kdf_salt FROM secure_handshake_keys
     WHERE conversation_id = ? AND user_id = ?
   `).get(conversationId, alice.id);
-  assert.ok(wrapped.wrapped_key);
-  assert.ok(wrapped.kdf_salt);
+  assert.ok(handshake.public_key);
+  assert.ok(handshake.kdf_salt);
 
   const blocked = await call(state.handleMessages, {
     method: 'POST',
@@ -108,12 +138,30 @@ test('secure chat stores wrapped keys and blocks plaintext message fallback', { 
   assert.equal(blocked.status, 409);
 });
 
-test('secure chat initiator can send encrypted messages while peer pairing is pending', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_pending_send_a'));
-  const bob = await register(testUsername('secure_pending_send_b'));
+test('encrypted messages stay blocked until invite is fully completed', { skip: !hasDatabase }, async () => {
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
   await addContact(alice, bob.username);
 
-  await enableSecureChat(alice, bob);
+  const conversationId = await inviteSecureChat(alice, bob);
+  const pendingAlice = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/messages/encrypted',
+    user: alice,
+    body: {
+      toId: bob.id,
+      messageId: crypto.randomUUID(),
+      ciphertext: b64(80),
+      iv: b64(12),
+      sequenceNumber: 1,
+      cryptoVersion: 2,
+      keyVersion: 1
+    }
+  });
+  assert.equal(pendingAlice.status, 403);
+
+  await acceptSecureChat(bob, conversationId);
+  await completeSecureChat(alice, conversationId);
 
   const sent = await call(state.handleSecureConversations, {
     method: 'POST',
@@ -125,98 +173,125 @@ test('secure chat initiator can send encrypted messages while peer pairing is pe
       ciphertext: b64(80),
       iv: b64(12),
       sequenceNumber: 1,
-      cryptoVersion: 1,
+      cryptoVersion: 2,
       keyVersion: 1
     }
   });
   assert.equal(sent.status, 201);
+});
 
-  const peerBlocked = await call(state.handleSecureConversations, {
+test('key material reports historical keys after bilateral close', { skip: !hasDatabase }, async () => {
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
+  await addContact(alice, bob.username);
+  const conversationId = await openSecureChat(alice, bob);
+
+  await call(state.handleSecureConversations, {
     method: 'POST',
     path: '/api/messages/encrypted',
-    user: bob,
+    user: alice,
     body: {
-      toId: alice.id,
+      toId: bob.id,
       messageId: crypto.randomUUID(),
       ciphertext: b64(80),
       iv: b64(12),
       sequenceNumber: 1,
-      cryptoVersion: 1,
+      cryptoVersion: 2,
       keyVersion: 1
     }
   });
-  assert.equal(peerBlocked.status, 403);
-});
 
-test('key material reports off for valid conversations without secure chat', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_off_a'));
-  const bob = await register(testUsername('secure_off_b'));
-  await addContact(alice, bob.username);
-  const conversationId = state.conversationKey(alice.id, bob.id);
+  await bilateralClose(alice, bob, conversationId);
 
   const material = await call(state.handleSecureConversations, {
     path: `/api/secure-conversations/${encodeURIComponent(conversationId)}/key-material`,
     user: alice
   });
-
   assert.equal(material.status, 200);
   assert.equal(material.body.conversation.status, 'off');
-  assert.equal(material.body.userWrappedKey, null);
+  assert.equal(material.body.hasHistoricalKeys, true);
+  assert.equal(material.body.historicalUserWrappedKeys.length, 1);
+  assert.equal(material.body.conversation.nextKeyVersion, 2);
+
+  const wraps = await state.getDb().prepare(`
+    SELECT COUNT(*)::int AS count FROM user_wrapped_conversation_keys WHERE conversation_id = ?
+  `).get(conversationId);
+  assert.equal(wraps.count, 2);
+
+  const encrypted = await state.getDb().prepare(`
+    SELECT COUNT(*)::int AS count FROM encrypted_messages WHERE conversation_id = ?
+  `).get(conversationId);
+  assert.equal(encrypted.count, 1);
+
+  const plainOk = await sendMessage(alice, bob.id, 'plain after close');
+  assert.equal(plainOk.text, 'plain after close');
 });
 
-test('secure chat can be disabled and re-enabled with fresh key material', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_disable_a'));
-  const bob = await register(testUsername('secure_disable_b'));
+test('close request can be cancelled by either party and stays waiting forever otherwise', { skip: !hasDatabase }, async () => {
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
   await addContact(alice, bob.username);
+  const conversationId = await openSecureChat(alice, bob);
 
-  const conversationId = await enableSecureChat(alice, bob);
-  const blockedPeerDisable = await call(state.handleSecureConversations, {
-    method: 'DELETE',
-    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}`,
-    user: bob
-  });
-  assert.equal(blockedPeerDisable.status, 403);
-
-  const disabled = await call(state.handleSecureConversations, {
-    method: 'DELETE',
-    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}`,
-    user: alice
-  });
-  assert.equal(disabled.status, 200);
-
-  const disabledMaterial = await call(state.handleSecureConversations, {
-    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}/key-material`,
-    user: alice
-  });
-  assert.equal(disabledMaterial.body.conversation.status, 'off');
-  assert.equal(disabledMaterial.body.userWrappedKey, null);
-  assert.equal(disabledMaterial.body.recoveryWrappedKey, null);
-
-  const nextKey = userWrappedKey({ wrappedKey: b64(64), kdfSalt: b64(24) });
-  const reenabled = await call(state.handleSecureConversations, {
+  const requested = await call(state.handleSecureConversations, {
     method: 'POST',
-    path: '/api/secure-conversations/enable',
+    path: '/api/secure-conversations/close/request',
     user: alice,
-    body: {
-      contactId: bob.id,
-      userWrappedKey: nextKey,
-      recoveryWrappedKey: recoveryWrappedKey({ wrappedKey: b64(64) })
-    }
+    body: { conversationId }
   });
-  assert.equal(reenabled.status, 201);
+  assert.equal(requested.status, 200);
 
-  const freshMaterial = await call(state.handleSecureConversations, {
-    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}/key-material`,
+  const cancelled = await call(state.handleSecureConversations, {
+    method: 'POST',
+    path: '/api/secure-conversations/close/cancel',
+    user: bob,
+    body: { conversationId }
+  });
+  assert.equal(cancelled.status, 200);
+  assert.equal(cancelled.body.status, 'enabled');
+
+  const row = await state.getDb().prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(conversationId);
+  assert.equal(row.status, 'enabled');
+  assert.equal(row.enabled, true);
+});
+
+test('re-invite after close increments key version and keeps old wraps', { skip: !hasDatabase }, async () => {
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
+  await addContact(alice, bob.username);
+  const conversationId = await openSecureChat(alice, bob, 1);
+  await bilateralClose(alice, bob, conversationId);
+
+  await openSecureChat(alice, bob, 2);
+
+  const wraps = await state.getDb().prepare(`
+    SELECT key_version FROM user_wrapped_conversation_keys
+    WHERE conversation_id = ? AND user_id = ?
+    ORDER BY key_version
+  `).all(conversationId, alice.id);
+  assert.deepEqual(wraps.map((row) => row.key_version), [1, 2]);
+
+  const row = await state.getDb().prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(conversationId);
+  assert.equal(row.current_key_version, 2);
+  assert.equal(row.status, 'enabled');
+});
+
+test('direct delete cannot close enabled secure chat', { skip: !hasDatabase }, async () => {
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
+  await addContact(alice, bob.username);
+  const conversationId = await openSecureChat(alice, bob);
+  const deleted = await call(state.handleSecureConversations, {
+    method: 'DELETE',
+    path: `/api/secure-conversations/${encodeURIComponent(conversationId)}`,
     user: alice
   });
-  assert.equal(freshMaterial.body.conversation.status, 'waiting_peer');
-  assert.equal(freshMaterial.body.userWrappedKey.wrappedKey, nextKey.wrappedKey);
-  assert.equal(freshMaterial.body.userWrappedKey.kdfSalt, nextKey.kdfSalt);
+  assert.equal(deleted.status, 400);
 });
 
 test('key material still hides non-contact conversations', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_off_block_a'));
-  const bob = await register(testUsername('secure_off_block_b'));
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
   const conversationId = state.conversationKey(alice.id, bob.id);
 
   const material = await call(state.handleSecureConversations, {
@@ -227,65 +302,19 @@ test('key material still hides non-contact conversations', { skip: !hasDatabase 
   assert.equal(material.status, 404);
 });
 
-test('pairing can be completed once and enables encrypted messages', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_pair_a'));
-  const bob = await register(testUsername('secure_pair_b'));
-  await addContact(alice, bob.username);
-
-  const conversationId = await enableSecureChat(alice, bob);
-  const pairingId = await createPairing(alice, conversationId);
-  await completePairing(bob, conversationId, pairingId);
-
-  const reused = await call(state.handleSecureConversations, {
-    method: 'POST',
-    path: '/api/secure-conversations/pairing/complete',
-    user: bob,
-    body: {
-      conversationId,
-      pairingId,
-      userWrappedKey: userWrappedKey()
-    }
-  });
-  assert.equal(reused.status, 400);
-
-  const sent = await call(state.handleSecureConversations, {
-    method: 'POST',
-    path: '/api/messages/encrypted',
-    user: alice,
-    body: {
-      toId: bob.id,
-      messageId: crypto.randomUUID(),
-      ciphertext: b64(80),
-      iv: b64(12),
-      sequenceNumber: 1,
-      cryptoVersion: 1,
-      keyVersion: 1
-    }
-  });
-  assert.equal(sent.status, 201);
-  assert.equal(sent.body.message.ciphertext.length > 0, true);
-  assert.equal(Object.hasOwn(sent.body.message, 'text'), false);
-
-  const stored = await state.getDb().prepare('SELECT * FROM encrypted_messages WHERE message_id = ?').get(sent.body.message.id);
-  assert.equal(stored.ciphertext, sent.body.message.ciphertext);
-  assert.equal(Object.hasOwn(stored, 'text'), false);
-});
-
 test('encrypted messages reject repeated sequence numbers and bad IVs', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_replay_a'));
-  const bob = await register(testUsername('secure_replay_b'));
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
   await addContact(alice, bob.username);
 
-  const conversationId = await enableSecureChat(alice, bob);
-  const pairingId = await createPairing(alice, conversationId);
-  await completePairing(bob, conversationId, pairingId);
+  await openSecureChat(alice, bob);
 
   const base = {
     toId: bob.id,
     ciphertext: b64(80),
     iv: b64(12),
     sequenceNumber: 7,
-    cryptoVersion: 1,
+    cryptoVersion: 2,
     keyVersion: 1
   };
   const first = await call(state.handleSecureConversations, {
@@ -314,8 +343,8 @@ test('encrypted messages reject repeated sequence numbers and bad IVs', { skip: 
 });
 
 test('legacy plaintext messaging still works outside secure conversations', { skip: !hasDatabase }, async () => {
-  const alice = await register(testUsername('secure_plain_a'));
-  const bob = await register(testUsername('secure_plain_b'));
+  const alice = await register(testUsername());
+  const bob = await register(testUsername());
   await addContact(alice, bob.username);
   const message = await sendMessage(alice, bob.id, 'plain outside secure mode');
   assert.equal(message.text, 'plain outside secure mode');
