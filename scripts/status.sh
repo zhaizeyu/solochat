@@ -13,7 +13,7 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
 fi
 
 SCHEME=http
-if [[ "${TEST_MODE:-false}" == "true" || "${USE_HTTPS:-false}" == "true" ]]; then
+if [[ "${USE_HTTPS:-false}" == "true" ]]; then
   SCHEME=https
 fi
 

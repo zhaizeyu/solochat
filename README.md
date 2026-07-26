@@ -72,7 +72,7 @@ PORT=3101
 数据库也可以使用 `PGHOST`、`PGPORT`、`PGUSER`、`PGPASSWORD` 和 `PGDATABASE` 分项配置。若同时提供，`DATABASE_URL` 优先。
 
 > R2 配置目前是必填项（`TEST_MODE=true` 时除外）。`USE_LOCAL=true` 会将 R2 图片镜像到本地，而不是替代 R2；本地目录默认为 `data/uploads`，可通过 `LOCAL_UPLOADS_DIR` 修改。
-> `TEST_MODE=true` 时会使用 `TEST_DATABASE_URL`，图片只保存到本地 `/uploads/...`，不会上传、同步或删除 R2 对象；并且默认启用 HTTPS（自签证书），因为安全聊天依赖浏览器安全上下文（`crypto.subtle`）。访问地址为 `https://主机:PORT`，需在浏览器中信任自签证书。
+> `TEST_MODE=true` 时会使用 `TEST_DATABASE_URL`，图片只保存到本地 `/uploads/...`，不会上传、同步或删除 R2 对象。HTTPS 由独立的 `USE_HTTPS` 控制（默认关闭）。本地需要安全聊天时请设 `USE_HTTPS=true`（自签证书，`npm run app:start` 会自动生成）；Coolify 测试/生产均保持 `USE_HTTPS=false`，由入口提供 HTTPS。
 
 ### 安全聊天（简版）
 

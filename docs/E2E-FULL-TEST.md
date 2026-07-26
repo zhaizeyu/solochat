@@ -6,9 +6,9 @@
 
 ## 前置条件
 
-1. 应用已启动，且为 HTTPS（安全聊天依赖 `crypto.subtle`）  
-   - 推荐：`TEST_MODE=true` + `npm run app:start`  
-   - 默认地址：`https://localhost:3101`  
+1. 应用已启动；本地安全聊天需 HTTPS（`USE_HTTPS=true` + 自签证书）  
+   - 推荐：`TEST_MODE=true` + `USE_HTTPS=true` + `npm run app:start`  
+   - 默认地址：`https://localhost:3101`
    - 改前端后需 `npm run build` + `bash scripts/restart.sh`（生产模式不热更新）
 2. 本机已安装 Playwright Chromium：  
    `npx playwright install chromium`

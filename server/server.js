@@ -11,7 +11,7 @@ import {
   testMode,
   tlsCertPath,
   tlsKeyPath,
-  useHttps
+  useHttps as configUseHttps
 } from './config.js';
 import { getAuthUser, getDb, openDb } from './db.js';
 import { json } from './http-utils.js';
@@ -112,6 +112,9 @@ if (orphanCleanup.orphaned.length) {
 }
 await app.prepare();
 
+// Coolify / reverse proxies terminate TLS; the app should speak HTTP unless local certs exist.
+let useHttps = configUseHttps;
+
 async function handleRequest(req, res) {
   try {
     const url = new URL(req.url || '/', `${useHttps ? 'https' : 'http'}://${req.headers.host || 'localhost'}`);
@@ -136,7 +139,12 @@ function createAppServer() {
     return http.createServer(handleRequest);
   }
   if (!existsSync(tlsCertPath) || !existsSync(tlsKeyPath)) {
-    throw new Error(`HTTPS 已启用，但证书不存在。请运行 scripts/ensure-certs.sh（期望 ${tlsCertPath} / ${tlsKeyPath}）`);
+    console.warn(
+      `[doolulu] USE_HTTPS=true 但证书不存在（${tlsCertPath} / ${tlsKeyPath}），已回退为 HTTP。` +
+        ' Coolify 等反代请设置 USE_HTTPS=false（由入口提供 HTTPS）；本地自签可运行 scripts/ensure-certs.sh。'
+    );
+    useHttps = false;
+    return http.createServer(handleRequest);
   }
   return https.createServer(
     {

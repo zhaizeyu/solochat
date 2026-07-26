@@ -16,9 +16,24 @@ R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
 S3_API_ENDPOINT=https://your-account-id.r2.cloudflarestorage.com
 R2_PUBLIC_BASE_URL=https://uploads.example.com
 USE_LOCAL=false
+USE_HTTPS=false
 HOST=0.0.0.0
 PORT=3000
 ```
+
+### HTTPS / 安全聊天（重要）
+
+`TEST_MODE` **只**切换测试库 / 本地上传，**不**控制 HTTPS。应用层 HTTPS 仅由 `USE_HTTPS` 决定（默认 `false`）。
+
+Coolify（测试或生产）在入口终止 TLS，**容器内应使用 HTTP**：
+
+- 设置 `USE_HTTPS=false`（或不设置）
+- Coolify 测试环境可以 `TEST_MODE=true`，同时保持 `USE_HTTPS=false`
+- 浏览器仍通过 Coolify 的 `https://你的域名` 访问，WebCrypto / 安全聊天可正常工作
+
+本地直接跑进程、需要安全聊天时：`.env` 里设 `USE_HTTPS=true`，并准备自签证书（`scripts/ensure-certs.sh` / `npm run app:start` 会自动生成）。
+
+若错误日志出现证书相关警告：检查是否误开了 `USE_HTTPS=true` 却没有挂载证书。缺少证书时会回退为 HTTP 并打警告，不再直接崩溃。
 
 Coolify can still render templates such as `{{ team.DATABASE_URL }}` before the container starts. The app only reads the final environment variable values.
 

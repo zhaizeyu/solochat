@@ -33,7 +33,7 @@ if [[ ! -d node_modules ]]; then
   exit 1
 fi
 
-if [[ "${TEST_MODE:-false}" == "true" || "${USE_HTTPS:-false}" == "true" ]]; then
+if [[ "${USE_HTTPS:-false}" == "true" ]]; then
   bash "$ROOT_DIR/scripts/ensure-certs.sh"
 fi
 
@@ -47,7 +47,7 @@ echo "$PID" >"$PID_FILE"
 sleep 1
 if kill -0 "$PID" 2>/dev/null; then
   echo "App started. PID: $PID"
-  if [[ "${TEST_MODE:-false}" == "true" || "${USE_HTTPS:-false}" == "true" ]]; then
+  if [[ "${USE_HTTPS:-false}" == "true" ]]; then
     echo "App: https://localhost:${PORT:-3101}"
   else
     echo "App: http://localhost:${PORT:-3101}"

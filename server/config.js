@@ -70,7 +70,8 @@ export const localUploadsDir = process.env.LOCAL_UPLOADS_DIR || path.join(rootDi
 export const localUploadsPublicPath = '/uploads';
 export const tlsCertPath = process.env.TLS_CERT_PATH || path.join(rootDir, 'data', 'certs', 'cert.pem');
 export const tlsKeyPath = process.env.TLS_KEY_PATH || path.join(rootDir, 'data', 'certs', 'key.pem');
-export const useHttps = String(process.env.USE_HTTPS || (testMode ? 'true' : 'false')).toLowerCase() === 'true';
+// Independent of TEST_MODE: Coolify test/prod both terminate TLS at the proxy.
+export const useHttps = String(process.env.USE_HTTPS || 'false').toLowerCase() === 'true';
 export const recallWindowMs = 8 * 60 * 1000;
 export const maxImageDataUrlLength = 4_300_000;
 export const bubbleThemes = new Set(['mint', 'pink', 'purple', 'sky', 'peach', 'lavender']);
