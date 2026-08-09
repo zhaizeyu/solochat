@@ -62,6 +62,7 @@ function filterAdminUsers(users, filters) {
     const disabled = Boolean(target.disabledAt);
     if (filters.status === 'active' && disabled) return false;
     if (filters.status === 'disabled' && !disabled) return false;
+    if (filters.status === 'admin' && !target.isAdmin) return false;
 
     if (query) {
       const haystack = [
@@ -96,6 +97,57 @@ function filterAdminUsers(users, filters) {
   });
 }
 
+function toLocalDateInput(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function computeAdminUserStats(users) {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOf7d = new Date(startOfToday);
+  startOf7d.setDate(startOf7d.getDate() - 6);
+  const startOf30d = new Date(startOfToday);
+  startOf30d.setDate(startOf30d.getDate() - 29);
+
+  let active = 0;
+  let disabled = 0;
+  let admins = 0;
+  let neverLogin = 0;
+  let createdToday = 0;
+  let created7d = 0;
+  let created30d = 0;
+
+  for (const target of users) {
+    if (target.disabledAt) disabled += 1;
+    else active += 1;
+    if (target.isAdmin) admins += 1;
+    if (!target.lastLoginAt) neverLogin += 1;
+
+    const createdAt = target.createdAt ? new Date(target.createdAt) : null;
+    if (!createdAt || Number.isNaN(createdAt.getTime())) continue;
+    if (createdAt >= startOfToday) createdToday += 1;
+    if (createdAt >= startOf7d) created7d += 1;
+    if (createdAt >= startOf30d) created30d += 1;
+  }
+
+  return {
+    total: users.length,
+    active,
+    disabled,
+    admins,
+    neverLogin,
+    createdToday,
+    created7d,
+    created30d,
+    today: toLocalDateInput(startOfToday),
+    weekFrom: toLocalDateInput(startOf7d),
+    monthFrom: toLocalDateInput(startOf30d)
+  };
+}
+
 function AdminPanel({ self, onLogout }) {
   const [users, setUsers] = useState([]);
   const [passwords, setPasswords] = useState({});
@@ -106,9 +158,44 @@ function AdminPanel({ self, onLogout }) {
   const [notice, setNotice] = useState('');
 
   const filteredUsers = useMemo(() => filterAdminUsers(users, filters), [users, filters]);
+  const stats = useMemo(() => computeAdminUserStats(users), [users]);
 
   function updateFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }));
+  }
+
+  function applyStatFilter(preset) {
+    if (preset === 'all') {
+      setFilters(emptyAdminFilters);
+      return;
+    }
+    if (preset === 'active') {
+      setFilters({ ...emptyAdminFilters, status: 'active' });
+      return;
+    }
+    if (preset === 'disabled') {
+      setFilters({ ...emptyAdminFilters, status: 'disabled' });
+      return;
+    }
+    if (preset === 'admin') {
+      setFilters({ ...emptyAdminFilters, status: 'admin' });
+      return;
+    }
+    if (preset === 'neverLogin') {
+      setFilters({ ...emptyAdminFilters, loginNever: true });
+      return;
+    }
+    if (preset === 'today') {
+      setFilters({ ...emptyAdminFilters, createdFrom: stats.today, createdTo: stats.today });
+      return;
+    }
+    if (preset === 'week') {
+      setFilters({ ...emptyAdminFilters, createdFrom: stats.weekFrom, createdTo: stats.today });
+      return;
+    }
+    if (preset === 'month') {
+      setFilters({ ...emptyAdminFilters, createdFrom: stats.monthFrom, createdTo: stats.today });
+    }
   }
 
   async function loadUsers() {
@@ -185,6 +272,30 @@ function AdminPanel({ self, onLogout }) {
       <section className="admin-panel">
         {error && <div className="inline-error">{error}</div>}
         {notice && <div className="success-line">{notice}</div>}
+        <div className="admin-stats" aria-label="用户数统计">
+          {[
+            { key: 'all', label: '全部用户', value: stats.total },
+            { key: 'active', label: '正常', value: stats.active },
+            { key: 'disabled', label: '已注销', value: stats.disabled },
+            { key: 'admin', label: '管理员', value: stats.admins },
+            { key: 'neverLogin', label: '从未登录', value: stats.neverLogin },
+            { key: 'today', label: '今日新增', value: stats.createdToday },
+            { key: 'week', label: '近 7 日新增', value: stats.created7d },
+            { key: 'month', label: '近 30 日新增', value: stats.created30d }
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              className="admin-stat"
+              onClick={() => applyStatFilter(item.key)}
+              disabled={loading}
+              title="点击按此项筛选列表"
+            >
+              <strong>{loading ? '—' : item.value}</strong>
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
         <form
           className="admin-filters"
           onSubmit={(event) => event.preventDefault()}
@@ -203,6 +314,7 @@ function AdminPanel({ self, onLogout }) {
               <option value="all">全部</option>
               <option value="active">正常</option>
               <option value="disabled">已注销</option>
+              <option value="admin">管理员</option>
             </select>
           </label>
           <label>

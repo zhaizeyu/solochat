@@ -2153,6 +2153,49 @@ textarea:focus {
   padding: 24px;
 }
 
+.admin-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.admin-stat {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-align: left;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  padding: 12px 14px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.admin-stat:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+}
+
+.admin-stat:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.admin-stat strong {
+  font-size: 22px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.admin-stat span {
+  color: var(--ink-subtle);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .admin-filters {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -2571,6 +2614,10 @@ textarea:focus {
 
   .admin-panel {
     padding: 14px;
+  }
+
+  .admin-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .admin-filters {
