@@ -505,6 +505,46 @@ export function releaseDeletedUsername(user) {
   return true;
 }
 
+/** Soft-delete a user: mark disabled, free username, drop contacts/sessions. */
+export async function disableUserAccount(user) {
+  if (!user) {
+    const error = new Error('用户不存在');
+    error.statusCode = 404;
+    throw error;
+  }
+  if (user.isAdmin) {
+    const error = new Error('管理员账号不能注销');
+    error.statusCode = 400;
+    throw error;
+  }
+  if (user.disabledAt) {
+    const error = new Error('用户已注销');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...user,
+    disabledAt: now,
+    displayName: String(user.displayName || '').endsWith('（已注销）')
+      ? user.displayName
+      : `${user.displayName}（已注销）`
+  };
+  releaseDeletedUsername(updated);
+  const db = getDb();
+  await execTransaction(async () => {
+    await db.prepare(`
+      UPDATE users
+      SET username = ?, display_name = ?, disabled_at = ?, deleted_username = ?
+      WHERE id = ?
+    `).run(updated.username, updated.displayName, updated.disabledAt, updated.deletedUsername, updated.id);
+    await db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(updated.id, updated.id);
+    await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(updated.id);
+  });
+  return updated;
+}
+
 async function ensureAdminUser() {
   const admin = rowToUser(await getDb().prepare(`SELECT ${userSelect()} FROM users WHERE username = ?`).get(adminUsername));
   if (admin) {

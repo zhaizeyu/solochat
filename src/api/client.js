@@ -229,6 +229,18 @@ const api = {
   },
   adminCleanupUserData(userId) {
     return this.request(`/api/admin/users/${userId}/data`, { method: 'DELETE' });
+  },
+  adminDisableUsers(userIds) {
+    return this.request('/api/admin/users/disable', {
+      method: 'POST',
+      body: JSON.stringify({ userIds })
+    });
+  },
+  adminCleanupUsersData(userIds) {
+    return this.request('/api/admin/users/cleanup-data', {
+      method: 'POST',
+      body: JSON.stringify({ userIds })
+    });
   }
 };
 

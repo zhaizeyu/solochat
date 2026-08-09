@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import { bubbleThemes, maxImageDataUrlLength } from '../config.js';
 import {
+  disableUserAccount,
   execTransaction,
   findActiveUserByUsername,
   getDb,
   getUserById,
-  releaseDeletedUsername,
   sanitizeUser
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
@@ -182,21 +182,11 @@ export async function handleCurrentUser(req, res, pathName, user) {
   }
 
   if (req.method === 'DELETE' && pathName === '/api/me') {
-    if (user.isAdmin) {
-      return json(res, 400, { message: '管理员账号不能注销' });
+    try {
+      await disableUserAccount(user);
+    } catch (error) {
+      return json(res, error.statusCode || 400, { message: error.message || '注销失败' });
     }
-    const now = new Date().toISOString();
-    const updated = { ...user, disabledAt: now, displayName: `${user.displayName}（已注销）` };
-    releaseDeletedUsername(updated);
-    await execTransaction(async () => {
-      await db.prepare(`
-        UPDATE users
-        SET username = ?, display_name = ?, disabled_at = ?, deleted_username = ?
-        WHERE id = ?
-      `).run(updated.username, updated.displayName, updated.disabledAt, updated.deletedUsername, updated.id);
-      await db.prepare('DELETE FROM contacts WHERE owner_id = ? OR contact_id = ?').run(user.id, user.id);
-      await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
-    });
     return json(res, 200, { ok: true });
   }
 

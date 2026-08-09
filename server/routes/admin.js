@@ -1,4 +1,5 @@
 import {
+  disableUserAccount,
   execTransaction,
   getDb,
   getUserById,
@@ -114,6 +115,106 @@ export async function handleAdmin(req, res, pathName, user) {
       await deleteUserOwnedData(db, target.id);
     });
     return json(res, 200, { ok: true });
+  }
+
+  if (req.method === 'POST' && pathName === '/api/admin/users/disable') {
+    const body = await readBody(req);
+    const rawIds = Array.isArray(body.userIds) ? body.userIds : [];
+    const userIds = [...new Set(rawIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!userIds.length) {
+      return json(res, 400, { message: '请选择要注销的用户' });
+    }
+    if (userIds.length > 100) {
+      return json(res, 400, { message: '单次最多注销 100 个用户' });
+    }
+
+    const disabled = [];
+    const skipped = [];
+    const failed = [];
+    for (const userId of userIds) {
+      const target = await getUserById(userId);
+      if (!target) {
+        failed.push({ id: userId, message: '用户不存在' });
+        continue;
+      }
+      if (target.id === user.id) {
+        failed.push({ id: userId, message: '不能注销当前登录的管理员' });
+        continue;
+      }
+      if (target.isAdmin) {
+        failed.push({ id: userId, message: '管理员账号不能注销' });
+        continue;
+      }
+      if (target.disabledAt) {
+        skipped.push({ id: userId, message: '用户已注销' });
+        continue;
+      }
+      try {
+        await disableUserAccount(target);
+        disabled.push(userId);
+      } catch (error) {
+        failed.push({ id: userId, message: error.message || '注销失败' });
+      }
+    }
+
+    return json(res, 200, {
+      ok: true,
+      disabledCount: disabled.length,
+      skippedCount: skipped.length,
+      failedCount: failed.length,
+      disabled,
+      skipped,
+      failed
+    });
+  }
+
+  if (req.method === 'POST' && pathName === '/api/admin/users/cleanup-data') {
+    const body = await readBody(req);
+    const rawIds = Array.isArray(body.userIds) ? body.userIds : [];
+    const userIds = [...new Set(rawIds.map((id) => String(id || '').trim()).filter(Boolean))];
+    if (!userIds.length) {
+      return json(res, 400, { message: '请选择要清理的用户' });
+    }
+    if (userIds.length > 100) {
+      return json(res, 400, { message: '单次最多清理 100 个用户' });
+    }
+
+    const cleaned = [];
+    const skipped = [];
+    const failed = [];
+    for (const userId of userIds) {
+      const target = await getUserById(userId);
+      if (!target) {
+        failed.push({ id: userId, message: '用户不存在' });
+        continue;
+      }
+      if (target.isAdmin) {
+        failed.push({ id: userId, message: '不能清理管理员账号' });
+        continue;
+      }
+      if (!target.disabledAt) {
+        skipped.push({ id: userId, message: '只能清理已注销用户' });
+        continue;
+      }
+      try {
+        await execTransaction(async () => {
+          await deleteUserOwnedData(db, target.id);
+        });
+        cleaned.push(userId);
+      } catch (error) {
+        failed.push({ id: userId, message: error.message || '清理失败' });
+      }
+    }
+
+    return json(res, 200, {
+      ok: true,
+      cleanedCount: cleaned.length,
+      skippedCount: skipped.length,
+      failedCount: failed.length,
+      cleaned,
+      skipped,
+      failed
+    });
   }
 
   return json(res, 404, { message: '接口不存在' });

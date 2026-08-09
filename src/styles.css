@@ -2270,6 +2270,62 @@ textarea:focus {
   padding: 0 12px;
 }
 
+.admin-bulk-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.admin-bulk-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-bulk-check input,
+.admin-user-select input {
+  width: 16px;
+  height: 16px;
+}
+
+.admin-bulk-count {
+  color: var(--ink-subtle);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.admin-bulk-actions button {
+  height: 36px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.admin-bulk-actions .danger-link {
+  border-color: #f1c5bd;
+  color: var(--danger);
+}
+
 .admin-user-list {
   display: grid;
   gap: 12px;
@@ -2277,7 +2333,7 @@ textarea:focus {
 
 .admin-user {
   display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(210px, auto) minmax(180px, auto) minmax(340px, 420px);
+  grid-template-columns: auto minmax(180px, 1fr) minmax(210px, auto) minmax(180px, auto) minmax(360px, 1fr);
   align-items: center;
   gap: 16px;
   border: 1px solid var(--hairline);
@@ -2287,8 +2343,19 @@ textarea:focus {
   box-shadow: var(--shadow-tight);
 }
 
+.admin-user.selected {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--hairline));
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+}
+
 .admin-user.disabled {
   background: rgba(255, 255, 255, 0.54);
+}
+
+.admin-user-select {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .admin-user-main {
@@ -2628,8 +2695,35 @@ textarea:focus {
     grid-column: 1 / -1;
   }
 
+  .admin-bulk-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .admin-bulk-actions {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .admin-bulk-actions button {
+    flex: 1;
+  }
+
   .admin-user {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto 1fr;
+  }
+
+  .admin-user-main,
+  .admin-user-meta,
+  .admin-user-times,
+  .admin-user-controls {
+    grid-column: 2;
+  }
+
+  .admin-user-select {
+    grid-row: 1 / span 4;
+    align-self: start;
+    padding-top: 4px;
   }
 
   .admin-user-controls {

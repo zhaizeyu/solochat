@@ -72,3 +72,93 @@ test('admin data cleanup requires a disabled non-admin user and keeps peers', { 
   assert.equal(await state.getUserById(target.id), null);
   assert.ok(await state.getUserById(peer.id));
 });
+
+test('admin can disable a single user and batch disable others', { skip: !hasDatabase }, async () => {
+  const one = await register('admin_disable_one');
+  const two = await register('admin_disable_two');
+  const three = await register('admin_disable_three');
+  const { token: oneToken } = await login(one.username);
+
+  const single = await call(state.handleAdmin, {
+    method: 'POST',
+    path: '/api/admin/users/disable',
+    user: state.adminUser,
+    body: { userIds: [one.id] }
+  });
+  assert.equal(single.status, 200, JSON.stringify(single.body));
+  assert.equal(single.body.disabledCount, 1);
+  assert.ok((await state.getUserById(one.id)).disabledAt);
+
+  const stale = await state.getAuthUser({
+    headers: { authorization: `Bearer ${oneToken}` }
+  });
+  assert.equal(stale, null);
+
+  const batch = await call(state.handleAdmin, {
+    method: 'POST',
+    path: '/api/admin/users/disable',
+    user: state.adminUser,
+    body: { userIds: [two.id, three.id, two.id] }
+  });
+  assert.equal(batch.status, 200, JSON.stringify(batch.body));
+  assert.equal(batch.body.disabledCount, 2);
+  assert.ok((await state.getUserById(two.id)).disabledAt);
+  assert.ok((await state.getUserById(three.id)).disabledAt);
+
+  const again = await call(state.handleAdmin, {
+    method: 'POST',
+    path: '/api/admin/users/disable',
+    user: state.adminUser,
+    body: { userIds: [two.id] }
+  });
+  assert.equal(again.status, 200);
+  assert.equal(again.body.disabledCount, 0);
+  assert.equal(again.body.skippedCount, 1);
+
+  const rejectAdmin = await call(state.handleAdmin, {
+    method: 'POST',
+    path: '/api/admin/users/disable',
+    user: state.adminUser,
+    body: { userIds: [state.adminUser.id] }
+  });
+  assert.equal(rejectAdmin.status, 200);
+  assert.equal(rejectAdmin.body.disabledCount, 0);
+  assert.equal(rejectAdmin.body.failedCount, 1);
+});
+
+test('admin can batch cleanup disabled users', { skip: !hasDatabase }, async () => {
+  const one = await register('adm_cln_a');
+  const two = await register('adm_cln_b');
+  const active = await register('adm_cln_live');
+
+  const disable = await call(state.handleAdmin, {
+    method: 'POST',
+    path: '/api/admin/users/disable',
+    user: state.adminUser,
+    body: { userIds: [one.id, two.id] }
+  });
+  assert.equal(disable.status, 200);
+  assert.equal(disable.body.disabledCount, 2);
+
+  const rejectActive = await call(state.handleAdmin, {
+    method: 'POST',
+    path: '/api/admin/users/cleanup-data',
+    user: state.adminUser,
+    body: { userIds: [active.id] }
+  });
+  assert.equal(rejectActive.status, 200);
+  assert.equal(rejectActive.body.cleanedCount, 0);
+  assert.equal(rejectActive.body.skippedCount, 1);
+  assert.ok(await state.getUserById(active.id));
+
+  const cleanup = await call(state.handleAdmin, {
+    method: 'POST',
+    path: '/api/admin/users/cleanup-data',
+    user: state.adminUser,
+    body: { userIds: [one.id, two.id, one.id] }
+  });
+  assert.equal(cleanup.status, 200, JSON.stringify(cleanup.body));
+  assert.equal(cleanup.body.cleanedCount, 2);
+  assert.equal(await state.getUserById(one.id), null);
+  assert.equal(await state.getUserById(two.id), null);
+});

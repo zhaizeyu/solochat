@@ -1,0 +1,11 @@
+---
+description: Default git push target is test; master only when explicitly requested
+alwaysApply: true
+---
+
+# Git branch push defaults
+
+- Default working / push branch: `test`.
+- When the user says push / 推送 / commit 并 push（未点名 master）: only push `test` (`origin/test`).
+- Push or merge to `master` **only** when the user explicitly names master（例如「推到 master」「更新 master」「合并到 master」）.
+- Do not update `master` as a side effect of a normal push to `test`.

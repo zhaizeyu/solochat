@@ -148,10 +148,23 @@ function computeAdminUserStats(users) {
   };
 }
 
+function canSelectUser(target) {
+  return Boolean(target) && !target.isAdmin;
+}
+
+function canDisableUser(target) {
+  return canSelectUser(target) && !target.disabledAt;
+}
+
+function canCleanupUser(target) {
+  return canSelectUser(target) && Boolean(target.disabledAt);
+}
+
 function AdminPanel({ self, onLogout }) {
   const [users, setUsers] = useState([]);
   const [passwords, setPasswords] = useState({});
   const [filters, setFilters] = useState(emptyAdminFilters);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [error, setError] = useState('');
@@ -159,6 +172,26 @@ function AdminPanel({ self, onLogout }) {
 
   const filteredUsers = useMemo(() => filterAdminUsers(users, filters), [users, filters]);
   const stats = useMemo(() => computeAdminUserStats(users), [users]);
+  const selectableFiltered = useMemo(
+    () => filteredUsers.filter(canSelectUser),
+    [filteredUsers]
+  );
+  const selectedTargets = useMemo(
+    () => users.filter((target) => selectedIds.has(target.id)),
+    [users, selectedIds]
+  );
+  const selectedDisableTargets = useMemo(
+    () => selectedTargets.filter(canDisableUser),
+    [selectedTargets]
+  );
+  const selectedCleanupTargets = useMemo(
+    () => selectedTargets.filter(canCleanupUser),
+    [selectedTargets]
+  );
+  const selectedCount = selectedIds.size;
+  const allFilteredSelected = selectableFiltered.length > 0
+    && selectableFiltered.every((target) => selectedIds.has(target.id));
+  const busy = Boolean(busyId);
 
   function updateFilter(key, value) {
     setFilters((current) => ({ ...current, [key]: value }));
@@ -198,9 +231,38 @@ function AdminPanel({ self, onLogout }) {
     }
   }
 
+  function toggleSelected(targetId, checked) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(targetId);
+      else next.delete(targetId);
+      return next;
+    });
+  }
+
+  function toggleSelectAllFiltered() {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (allFilteredSelected) {
+        for (const target of selectableFiltered) next.delete(target.id);
+      } else {
+        for (const target of selectableFiltered) next.add(target.id);
+      }
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
   async function loadUsers() {
     const data = await api.adminUsers();
     setUsers(data.users);
+    setSelectedIds((current) => {
+      const valid = new Set(data.users.filter(canSelectUser).map((item) => item.id));
+      return new Set([...current].filter((id) => valid.has(id)));
+    });
   }
 
   useEffect(() => {
@@ -234,15 +296,66 @@ function AdminPanel({ self, onLogout }) {
     }
   }
 
-  async function cleanupUser(target) {
-    const ok = window.confirm(`确定清理 ${target.displayName} 的所有数据吗？该操作会永久删除账号、联系人、消息和表情包。`);
+  async function cleanupUsers(targets) {
+    const list = targets.filter(canCleanupUser);
+    if (!list.length) {
+      setError('请先选择已注销且可清理的用户');
+      return;
+    }
+    const names = list.slice(0, 5).map((item) => item.displayName).join('、');
+    const more = list.length > 5 ? ` 等 ${list.length} 人` : '';
+    const ok = window.confirm(
+      `确定清理 ${names}${more} 的所有数据吗？\n\n该操作会永久删除账号、联系人、消息和表情包，不可恢复。`
+    );
     if (!ok) return;
-    setBusyId(target.id);
+
+    setBusyId(list.length === 1 ? list[0].id : 'batch');
     setError('');
     setNotice('');
     try {
-      await api.adminCleanupUserData(target.id);
-      setNotice(`已清理 ${target.displayName} 的所有数据`);
+      const result = await api.adminCleanupUsersData(list.map((item) => item.id));
+      const parts = [`已清理 ${result.cleanedCount || 0} 人`];
+      if (result.skippedCount) parts.push(`跳过 ${result.skippedCount}`);
+      if (result.failedCount) parts.push(`失败 ${result.failedCount}`);
+      setNotice(parts.join('，'));
+      if (result.failed?.length) {
+        setError(result.failed.map((item) => item.message).slice(0, 3).join('；'));
+      }
+      clearSelection();
+      await loadUsers();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId('');
+    }
+  }
+
+  async function disableUsers(targets) {
+    const list = targets.filter(canDisableUser);
+    if (!list.length) {
+      setError('请先选择可注销的用户（正常非管理员）');
+      return;
+    }
+    const names = list.slice(0, 5).map((item) => item.displayName).join('、');
+    const more = list.length > 5 ? ` 等 ${list.length} 人` : '';
+    const ok = window.confirm(
+      `确定注销 ${names}${more} 吗？\n\n注销后不能登录，会从联系人列表移除，会话会被强制退出。账号数据仍保留，之后可再清理。`
+    );
+    if (!ok) return;
+
+    setBusyId(list.length === 1 ? list[0].id : 'batch');
+    setError('');
+    setNotice('');
+    try {
+      const result = await api.adminDisableUsers(list.map((item) => item.id));
+      const parts = [`已注销 ${result.disabledCount || 0} 人`];
+      if (result.skippedCount) parts.push(`跳过 ${result.skippedCount}`);
+      if (result.failedCount) parts.push(`失败 ${result.failedCount}`);
+      setNotice(parts.join('，'));
+      if (result.failed?.length) {
+        setError(result.failed.map((item) => item.message).slice(0, 3).join('；'));
+      }
+      clearSelection();
       await loadUsers();
     } catch (err) {
       setError(err.message);
@@ -262,7 +375,7 @@ function AdminPanel({ self, onLogout }) {
           </div>
         </div>
         <div className="admin-actions">
-          <button type="button" onClick={() => loadUsers().catch((err) => setError(err.message))} disabled={Boolean(busyId)}>
+          <button type="button" onClick={() => loadUsers().catch((err) => setError(err.message))} disabled={busy}>
             刷新
           </button>
           <button type="button" onClick={onLogout}>退出</button>
@@ -390,6 +503,46 @@ function AdminPanel({ self, onLogout }) {
             </button>
           </div>
         </form>
+
+        <div className="admin-bulk-bar">
+          <label className="admin-bulk-check">
+            <input
+              type="checkbox"
+              checked={allFilteredSelected}
+              disabled={loading || busy || selectableFiltered.length === 0}
+              onChange={toggleSelectAllFiltered}
+            />
+            <span>全选当前列表</span>
+          </label>
+          <span className="admin-bulk-count">
+            已选 {selectedCount}
+            {selectedDisableTargets.length || selectedCleanupTargets.length
+              ? `（可注销 ${selectedDisableTargets.length} / 可清理 ${selectedCleanupTargets.length}）`
+              : ''}
+          </span>
+          <div className="admin-bulk-actions">
+            <button type="button" onClick={clearSelection} disabled={busy || selectedCount === 0}>
+              取消选择
+            </button>
+            <button
+              type="button"
+              className="danger-link"
+              onClick={() => disableUsers(selectedDisableTargets)}
+              disabled={busy || selectedDisableTargets.length === 0}
+            >
+              注销所选
+            </button>
+            <button
+              type="button"
+              className="danger-link"
+              onClick={() => cleanupUsers(selectedCleanupTargets)}
+              disabled={busy || selectedCleanupTargets.length === 0}
+            >
+              清理所选数据
+            </button>
+          </div>
+        </div>
+
         {loading ? (
           <div className="empty-list">正在加载用户...</div>
         ) : filteredUsers.length === 0 ? (
@@ -398,9 +551,25 @@ function AdminPanel({ self, onLogout }) {
           <div className="admin-user-list">
             {filteredUsers.map((target) => {
               const disabled = Boolean(target.disabledAt);
-              const busy = busyId === target.id;
+              const selectable = canSelectUser(target);
+              const disableable = canDisableUser(target);
+              const cleanupable = canCleanupUser(target);
+              const rowBusy = busyId === target.id || busyId === 'batch';
+              const checked = selectedIds.has(target.id);
               return (
-                <article className={`admin-user ${disabled ? 'disabled' : ''}`} key={target.id}>
+                <article
+                  className={`admin-user ${disabled ? 'disabled' : ''} ${checked ? 'selected' : ''}`}
+                  key={target.id}
+                >
+                  <label className="admin-user-select">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={!selectable || rowBusy}
+                      onChange={(event) => toggleSelected(target.id, event.target.checked)}
+                      aria-label={`选择 ${target.displayName}`}
+                    />
+                  </label>
                   <div className="admin-user-main">
                     <Avatar user={target} size="small" />
                     <div>
@@ -434,16 +603,24 @@ function AdminPanel({ self, onLogout }) {
                       value={passwords[target.id] || ''}
                       onChange={(event) => setPasswords({ ...passwords, [target.id]: event.target.value })}
                       placeholder="新密码"
-                      disabled={disabled || busy}
+                      disabled={disabled || rowBusy}
                     />
-                    <button type="button" onClick={() => resetPassword(target)} disabled={disabled || busy}>
+                    <button type="button" onClick={() => resetPassword(target)} disabled={disabled || rowBusy}>
                       重置密码
                     </button>
                     <button
                       type="button"
                       className="danger-link"
-                      onClick={() => cleanupUser(target)}
-                      disabled={!disabled || target.isAdmin || busy}
+                      onClick={() => disableUsers([target])}
+                      disabled={!disableable || rowBusy}
+                    >
+                      注销
+                    </button>
+                    <button
+                      type="button"
+                      className="danger-link"
+                      onClick={() => cleanupUsers([target])}
+                      disabled={!cleanupable || rowBusy}
                     >
                       清理数据
                     </button>
