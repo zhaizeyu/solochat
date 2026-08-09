@@ -169,7 +169,7 @@ export async function handleMessages(req, res, pathName, user, url) {
     }
     const conversationId = conversationKey(user.id, target.id);
     if (kind === 'text' && (await isSecureConversationActive(conversationId))) {
-      return json(res, 409, { message: '安全聊天已开启，请使用安全消息发送文字' });
+      return json(res, 409, { message: '安全聊天进行中，请直接发送消息（会自动加密）' });
     }
     let quote = null;
     if (quoteId) {

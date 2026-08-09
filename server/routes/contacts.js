@@ -100,7 +100,7 @@ export async function handleContacts(req, res, pathName, user) {
       return {
         ...sanitizeUser(rowToUser(row)),
         lastMessage: encryptedIsLatest
-          ? '[加密消息]'
+          ? '[加密聊天]'
           : messagePreview({
             text: row.lastText || '',
             kind: row.lastKind || 'text',

@@ -55,7 +55,7 @@ async function hkdf(rawKey, info, length = 32) {
 
 export function assertSecureChatSupported() {
   if (!window.isSecureContext || !crypto?.subtle || !crypto?.getRandomValues) {
-    throw new Error('安全聊天需要 HTTPS（或本机 localhost）。请使用 https 访问本站。');
+    throw new Error('安全聊天需要安全连接。请用 https 打开本站后再试。');
   }
 }
 

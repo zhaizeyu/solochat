@@ -129,7 +129,7 @@ function AdminPanel({ self, onLogout }) {
       return;
     }
     const ok = window.confirm(
-      `确定重置 ${target.displayName} 的登录密码吗？\n\n注意：安全聊天密钥仍由旧密码封装。用户需用旧密码解锁历史消息并迁移到新密码，否则可能无法解密旧密文。重置后该用户所有登录会话会失效。`
+      `确定重置 ${target.displayName} 的登录密码吗？\n\n注意：若对方开通过安全聊天，旧的加密消息仍需用「原来的登录密码」才能打开。重置后对方所有已登录设备会退出。`
     );
     if (!ok) return;
     setBusyId(target.id);

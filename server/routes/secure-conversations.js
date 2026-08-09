@@ -277,14 +277,14 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     const userWrappedKeys = Array.isArray(body.userWrappedKeys) ? body.userWrappedKeys : [];
     const handshakeKeys = Array.isArray(body.handshakeKeys) ? body.handshakeKeys : [];
     if (!userWrappedKeys.length && !handshakeKeys.length) {
-      return json(res, 400, { message: '没有可重封的密钥' });
+      return json(res, 400, { message: '没有需要更新的安全聊天' });
     }
     try {
       await execTransaction(async () => {
         await applyLoginPasswordRewraps(user.id, userWrappedKeys, handshakeKeys);
       });
     } catch (error) {
-      return json(res, 400, { message: error.message || '密钥重封失败' });
+      return json(res, 400, { message: error.message || '未能更新安全聊天，请稍后再试' });
     }
     return json(res, 200, {
       ok: true,
@@ -353,10 +353,10 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     if (wrapError) return json(res, 400, { message: wrapError });
     const existing = await db.prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(context.conversationId);
     if (existing && (existing.enabled || existing.status === 'closing')) {
-      return json(res, 409, { message: '安全聊天已开启或正在关闭中' });
+      return json(res, 409, { message: '安全聊天已在进行中或正在关闭' });
     }
     if (existing && existing.status === 'waiting_peer' && existing.recovery_owner_user_id && existing.recovery_owner_user_id !== user.id) {
-      return json(res, 409, { message: '对方已发起邀请，请直接同意' });
+      return json(res, 409, { message: '对方已经发起邀请，请打开安全面板同意开启' });
     }
     const nextVersion = !existing || existing.status === 'off'
       ? Number(existing?.current_key_version || 0) + 1
@@ -449,7 +449,7 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     const secure = await db.prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(context.conversationId);
     if (!secure || secure.status === 'off') return json(res, 400, { message: '安全聊天不存在' });
     if (secure.recovery_owner_user_id !== user.id) {
-      return json(res, 403, { message: '只有邀请方可以完成开启' });
+      return json(res, 403, { message: '只有发起邀请的一方可以完成开启' });
     }
     const peer = await db.prepare(`
       SELECT public_key AS "publicKey" FROM secure_handshake_keys
@@ -460,7 +460,7 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
       WHERE conversation_id = ? AND user_id = ? AND key_version = ?
     `).get(context.conversationId, context.target.id, secure.current_key_version);
     if (!peer?.publicKey || !peerWrapped) {
-      return json(res, 400, { message: '对方尚未同意邀请' });
+      return json(res, 400, { message: '对方还没有同意邀请' });
     }
     const wrapError = validateWrappedKeyPayload(body.userWrappedKey || {});
     if (wrapError) return json(res, 400, { message: wrapError });
@@ -559,7 +559,7 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     const secure = await db.prepare('SELECT * FROM secure_conversations WHERE conversation_id = ?').get(context.conversationId);
     if (!secure || secure.status === 'off') return json(res, 200, { ok: true, status: 'off' });
     if (secure.status === 'enabled' || secure.status === 'closing') {
-      return json(res, 400, { message: '已开启的安全聊天需双方确认后关闭' });
+      return json(res, 400, { message: '已开启的安全聊天需要双方都同意后才能关闭' });
     }
     if (secure.status !== 'waiting_peer') {
       return json(res, 400, { message: '当前状态无法取消' });
@@ -720,10 +720,10 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
       WHERE conversation_id = ? AND user_id = ? AND key_version = ?
     `).get(context.conversationId, user.id, secure.current_key_version);
     if (!ownKey) {
-      return json(res, 403, { message: secure.enabled || secure.status === 'closing' ? '请先解锁安全聊天' : '请先完成安全聊天开启' });
+      return json(res, 403, { message: secure.enabled || secure.status === 'closing' ? '请先输入密码继续安全聊天' : '请先和对方完成安全聊天开启' });
     }
     if (!secure.enabled && secure.status !== 'closing' && secure.recovery_owner_user_id !== user.id) {
-      return json(res, 403, { message: '对方尚未完成开启，暂时不能发送' });
+      return json(res, 403, { message: '对方还没有完成开启，暂时不能发送' });
     }
     // During waiting_peer only initiator with own key could send; initiator has no own key until complete.
     if (secure.status === 'waiting_peer' && !secure.enabled) {

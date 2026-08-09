@@ -172,7 +172,7 @@ export async function handleCurrentUser(req, res, pathName, user) {
         await db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
       });
     } catch (error) {
-      return json(res, 400, { message: error.message || '密钥重封失败' });
+      return json(res, 400, { message: error.message || '未能用新密码更新安全聊天，请稍后再试' });
     }
     return json(res, 200, {
       ok: true,

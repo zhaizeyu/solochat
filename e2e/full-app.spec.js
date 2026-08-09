@@ -109,7 +109,7 @@ test('全功能浏览器测试：双用户 + 管理员 + 注销清理', async ({
     // --- 6. 安全聊天全流程 ---
     note('Alice 邀请开启安全聊天');
     await openSecurePanel(alicePage);
-    await alicePage.getByRole('button', { name: '邀请开启' }).click();
+    await alicePage.getByRole('button', { name: '邀请对方开启' }).click();
     await fillSecureDialog(alicePage, { 登录密码: alice.password }, '确定');
     // Desktop+mobile both mount the panel; prefer a visible action over hidden status text.
     await alicePage.getByRole('button', { name: '取消邀请' }).waitFor({ timeout: 180_000 });
@@ -117,20 +117,20 @@ test('全功能浏览器测试：双用户 + 管理员 + 注销清理', async ({
     note('Bob 同意邀请');
     await reloadAndOpenContact(bobPage, alice.displayName);
     await openSecurePanel(bobPage);
-    await bobPage.getByRole('button', { name: '同意邀请' }).waitFor({ timeout: 60_000 });
-    await bobPage.getByRole('button', { name: '同意邀请' }).click();
+    await bobPage.getByRole('button', { name: '同意开启' }).waitFor({ timeout: 60_000 });
+    await bobPage.getByRole('button', { name: '同意开启' }).click();
     await fillSecureDialog(bobPage, { 登录密码: bob.password }, '确定');
     await bobPage.getByRole('button', { name: /取消邀请|等待/ }).first().waitFor({ timeout: 5_000 }).catch(() => {});
-    // After accept, Bob typically sees no "同意邀请" and status updates asynchronously.
-    await expect.poll(async () => bobPage.getByRole('button', { name: '同意邀请' }).count(), {
+    // After accept, Bob typically sees no accept button and status updates asynchronously.
+    await expect.poll(async () => bobPage.getByRole('button', { name: '同意开启' }).count(), {
       timeout: 180_000
     }).toBe(0);
 
     note('Alice 确认开启');
     await reloadAndOpenContact(alicePage, bob.displayName);
     await openSecurePanel(alicePage);
-    await alicePage.getByRole('button', { name: '确认开启' }).waitFor({ timeout: 120_000 });
-    await alicePage.getByRole('button', { name: '确认开启' }).click();
+    await alicePage.getByRole('button', { name: '完成开启' }).waitFor({ timeout: 120_000 });
+    await alicePage.getByRole('button', { name: '完成开启' }).click();
     await fillSecureDialog(alicePage, { 登录密码: alice.password }, '确定');
     // completeSecureInvite keeps Alice unlocked in-memory.
     await alicePage.getByRole('button', { name: '申请关闭' }).waitFor({ timeout: 180_000 });
@@ -139,15 +139,15 @@ test('全功能浏览器测试：双用户 + 管理员 + 注销清理', async ({
     note('Bob 解锁会话');
     await reloadAndOpenContact(bobPage, alice.displayName);
     await openSecurePanel(bobPage);
-    const bobUnlock = bobPage.getByRole('button', { name: '解锁会话' });
+    const bobUnlock = bobPage.getByRole('button', { name: '输入密码继续' });
     const bobCloseRequest = bobPage.getByRole('button', { name: '申请关闭' });
     // Accept may leave roots in memory; reload usually clears them. Handle both states.
     if (await bobUnlock.isVisible().catch(() => false)) {
       await bobUnlock.click();
       await fillSecureDialog(bobPage, {
-        封装密码: bob.password,
-        '当前登录密码（与上面相同时可留空）': ''
-      }, '确定');
+        开启时的登录密码: bob.password,
+        '现在的登录密码（与上面相同可留空）': ''
+      }, '继续');
     }
     await bobCloseRequest.waitFor({ timeout: 180_000 });
     await bobPage.getByRole('button', { name: '收回安全设置' }).click().catch(() => {});
@@ -160,12 +160,12 @@ test('全功能浏览器测试：双用户 + 管理员 + 注销清理', async ({
     note('双方确认关闭安全聊天');
     await openSecurePanel(alicePage);
     await alicePage.getByRole('button', { name: '申请关闭' }).click();
-    await fillSecureDialog(alicePage, { '我知道需要保留当时的登录密码才能查看历史加密消息': true }, '申请关闭');
+    await fillSecureDialog(alicePage, { '我明白：以后查看旧消息，需要记得开启时的登录密码': true }, '申请关闭');
     await reloadAndOpenContact(bobPage, alice.displayName);
     await openSecurePanel(bobPage);
-    await bobPage.getByRole('button', { name: '确认关闭' }).waitFor({ timeout: 60_000 });
-    await bobPage.getByRole('button', { name: '确认关闭' }).click();
-    await fillSecureDialog(bobPage, { '我知道需要保留当时的登录密码才能查看历史加密消息': true }, '确认关闭');
+    await bobPage.getByRole('button', { name: '同意关闭' }).waitFor({ timeout: 60_000 });
+    await bobPage.getByRole('button', { name: '同意关闭' }).click();
+    await fillSecureDialog(bobPage, { '我明白：以后查看旧消息，需要记得开启时的登录密码': true }, '同意关闭');
     await alicePage.getByRole('button', { name: '收回安全设置' }).click().catch(() => {});
     await bobPage.getByRole('button', { name: '收回安全设置' }).click().catch(() => {});
 

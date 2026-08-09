@@ -44,12 +44,14 @@ export default function App() {
   const [pageVisible, setPageVisible] = useState(true);
   const selectedId = selected?.id;
   const messagesRef = useRef([]);
-  const secureRootRef = useRef(null);
+  // Per-conversation unlocked roots for this browser tab (also mirrored to sessionStorage).
+  const secureRootsByConversationRef = useRef({});
   const secureMaterialRef = useRef(null);
   const loadingOlderMessagesRef = useRef(false);
   const hasOlderMessagesRef = useRef(false);
   const originalTitleRef = useRef('doolulu');
   const isMobileShell = useMobileShell();
+  const SECURE_ROOTS_STORAGE_KEY = 'doolulu.secureRoots.v1';
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -69,7 +71,7 @@ export default function App() {
 
   function clearSession() {
     localStorage.removeItem('doolulu.token');
-    secureRootRef.current = null;
+    clearSecureRoots();
     secureMaterialRef.current = null;
     setSecureChat({ status: 'off', unlocked: false });
     setUser(null);
@@ -99,12 +101,83 @@ export default function App() {
     return status === 'enabled' || status === 'closing' || status === 'waiting_peer';
   }
 
-  function getRootsByVersion() {
-    return secureRootRef.current?.rootsByVersion || {};
+  function activeSecureConversationId(contactId = selectedId) {
+    return (
+      secureMaterialRef.current?.conversation?.conversationId
+      || (user && contactId ? makeConversationId(user.id, contactId) : '')
+    );
+  }
+
+  function getRootsByVersion(conversationId = activeSecureConversationId()) {
+    if (!conversationId) return {};
+    return secureRootsByConversationRef.current[conversationId] || {};
+  }
+
+  function persistSecureRoots(userId = user?.id) {
+    if (!userId || typeof sessionStorage === 'undefined') return;
+    try {
+      const conversations = {};
+      for (const [conversationId, roots] of Object.entries(secureRootsByConversationRef.current)) {
+        const encoded = {};
+        for (const [version, rootKey] of Object.entries(roots)) {
+          if (rootKey) encoded[version] = base64(rootKey);
+        }
+        if (Object.keys(encoded).length) conversations[conversationId] = encoded;
+      }
+      if (!Object.keys(conversations).length) {
+        sessionStorage.removeItem(SECURE_ROOTS_STORAGE_KEY);
+        return;
+      }
+      sessionStorage.setItem(SECURE_ROOTS_STORAGE_KEY, JSON.stringify({ userId, conversations }));
+    } catch {
+      // Private mode / quota — ignore; in-memory unlock still works.
+    }
+  }
+
+  function hydrateSecureRoots(userId) {
+    if (!userId || typeof sessionStorage === 'undefined') return;
+    try {
+      const raw = sessionStorage.getItem(SECURE_ROOTS_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed?.userId !== userId || !parsed.conversations) {
+        sessionStorage.removeItem(SECURE_ROOTS_STORAGE_KEY);
+        return;
+      }
+      const next = {};
+      for (const [conversationId, roots] of Object.entries(parsed.conversations)) {
+        next[conversationId] = {};
+        for (const [version, value] of Object.entries(roots || {})) {
+          next[conversationId][Number(version)] = fromBase64(value);
+        }
+      }
+      secureRootsByConversationRef.current = next;
+    } catch {
+      sessionStorage.removeItem(SECURE_ROOTS_STORAGE_KEY);
+    }
   }
 
   function setSecureRoots(conversationId, rootsByVersion) {
-    secureRootRef.current = { conversationId, rootsByVersion: { ...rootsByVersion } };
+    if (!conversationId) return;
+    secureRootsByConversationRef.current = {
+      ...secureRootsByConversationRef.current,
+      [conversationId]: { ...rootsByVersion }
+    };
+    persistSecureRoots();
+  }
+
+  function clearSecureRoots(conversationId = null) {
+    if (conversationId) {
+      const next = { ...secureRootsByConversationRef.current };
+      delete next[conversationId];
+      secureRootsByConversationRef.current = next;
+    } else {
+      secureRootsByConversationRef.current = {};
+    }
+    persistSecureRoots(user?.id);
+    if (!conversationId && typeof sessionStorage !== 'undefined') {
+      sessionStorage.removeItem(SECURE_ROOTS_STORAGE_KEY);
+    }
   }
 
   function shouldLoadEncryptedMessages(material = secureMaterialRef.current) {
@@ -209,7 +282,7 @@ export default function App() {
     const peerAccepted = Boolean(material?.peerAccepted);
     const closeRequestedBy = material?.conversation?.closeRequestedBy || null;
     const conversationId = material?.conversation?.conversationId || (user && contactId ? makeConversationId(user.id, contactId) : '');
-    const roots = secureRootRef.current?.conversationId === conversationId ? getRootsByVersion() : {};
+    const roots = getRootsByVersion(conversationId);
     const unlockedVersions = Object.keys(roots).map(Number);
     const historyUnlocked = unlockedVersions.length > 0;
     const lockedHistoryKeys = (material?.historicalUserWrappedKeys || []).filter(
@@ -219,10 +292,9 @@ export default function App() {
       status,
       enabled: Boolean(material?.conversation?.enabled),
       unlocked: Boolean(
-        secureRootRef.current?.conversationId === conversationId
-        && (status === 'off'
+        status === 'off'
           ? historyUnlocked
-          : roots[material?.conversation?.currentKeyVersion])
+          : roots[material?.conversation?.currentKeyVersion]
       ),
       historyUnlocked,
       canUnlockHistory: lockedHistoryKeys.length > 0,
@@ -251,7 +323,6 @@ export default function App() {
       return material;
     } catch {
       secureMaterialRef.current = null;
-      secureRootRef.current = null;
       setSecureChat({ status: 'off', unlocked: false, historyUnlocked: false, conversationId, hasHistoricalKeys: false });
       return null;
     }
@@ -290,7 +361,7 @@ export default function App() {
         decrypted.push({
           ...message,
           kind: 'text',
-          text: '历史加密消息（需对应登录密码解锁后查看）',
+          text: '（加密消息，输入登录密码后可查看）',
           quote: null,
           sticker: null,
           decryptFailed: true,
@@ -353,7 +424,7 @@ export default function App() {
       if (values.allowOldPassword) {
         return { password: values.password, values, unverified: true };
       }
-      alert('登录密码错误');
+      alert('登录密码不正确');
       return null;
     }
   }
@@ -361,7 +432,7 @@ export default function App() {
   async function askCurrentLoginPassword(title, description, extraFields = []) {
     const result = await askLoginPassword(title, description, extraFields);
     if (!result || result.unverified) {
-      if (result?.unverified) alert('请输入当前登录密码');
+      if (result?.unverified) alert('请输入现在使用的登录密码');
       return null;
     }
     return result.password;
@@ -452,7 +523,7 @@ export default function App() {
     if (fromPassword === currentPassword) return { rewrappedUserKeys: 0, rewrappedHandshakeKeys: 0, skipped: 0 };
     const built = await buildRewrapsWithPasswords(fromPassword, currentPassword);
     if (!built.userWrappedKeys.length && !built.handshakeKeys.length) {
-      if (!silent) alert('没有可用旧密码解开的密钥可迁移。');
+      if (!silent) alert('没有能用这个旧密码打开的安全聊天。');
       return null;
     }
     const result = await api.rewrapSecureKeys(built.userWrappedKeys, built.handshakeKeys);
@@ -460,22 +531,22 @@ export default function App() {
     if (!silent) {
       alert(
         built.skipped > 0
-          ? `已将 ${result.rewrappedUserKeys} 个会话密钥和 ${result.rewrappedHandshakeKeys} 个握手密钥改用当前密码封装；另有 ${built.skipped} 个仍需其他旧密码。`
-          : `已将 ${result.rewrappedUserKeys} 个会话密钥和 ${result.rewrappedHandshakeKeys} 个握手密钥改用当前密码封装。`
+          ? `已用新密码更新部分安全聊天；另有 ${built.skipped} 处仍需对应的旧密码才能打开。`
+          : '已用新密码更新相关安全聊天，之后用新密码即可继续。'
       );
     }
     return { ...result, skipped: built.skipped };
   }
 
   async function unlockSecureChatWithPassword(password, material = secureMaterialRef.current) {
-    if (!user || !material) throw new Error('缺少安全聊天材料');
+    if (!user || !material) throw new Error('请先和对方开启安全聊天');
     assertSecureChatSupported();
     const conversationId = material.conversation.conversationId;
     const currentWrapped = material.userWrappedKey;
-    if (!currentWrapped) throw new Error('当前账号还没有安全聊天密钥');
+    if (!currentWrapped) throw new Error('请先和对方完成安全聊天开启');
     const rootKey = await unwrapWrappedRoot(currentWrapped, password, conversationId);
     const rootsByVersion = {
-      ...getRootsByVersion(),
+      ...getRootsByVersion(conversationId),
       [currentWrapped.keyVersion]: rootKey
     };
     // Same login password may also open older wraps; try quietly, never prompt here.
@@ -495,18 +566,18 @@ export default function App() {
   async function promptUnlockSecureChat() {
     const material = secureMaterialRef.current || await loadSecureMaterial();
     if (!material?.userWrappedKey) {
-      alert('请先完成安全聊天开启。');
+      alert('请先和对方完成安全聊天开启。');
       return null;
     }
     assertSecureChatSupported();
     const values = await askSecureInput({
-      title: '解锁安全聊天',
-      description: '若密钥仍是旧密码封装的，请同时填写当前登录密码；解锁成功后会自动改用当前密码封装。',
+      title: '继续安全聊天',
+      description: '输入开启时的登录密码，即可继续查看和发送加密聊天。\n若已改过密码：先填开启时的旧密码，再填现在的登录密码（相同可留空）。',
       fields: [
-        { key: 'password', label: '封装密码', type: 'password', autoComplete: 'current-password' },
-        { key: 'currentPassword', label: '当前登录密码（与上面相同时可留空）', type: 'password', autoComplete: 'current-password', required: false }
+        { key: 'password', label: '开启时的登录密码', type: 'password', autoComplete: 'current-password' },
+        { key: 'currentPassword', label: '现在的登录密码（与上面相同可留空）', type: 'password', autoComplete: 'current-password', required: false }
       ],
-      confirmLabel: '确定'
+      confirmLabel: '继续'
     });
     if (!values?.password) return null;
     const wrapPassword = values.password;
@@ -514,7 +585,7 @@ export default function App() {
     try {
       await api.verifyLoginPassword(currentPassword);
     } catch {
-      alert('当前登录密码错误');
+      alert('现在的登录密码不正确');
       return null;
     }
     try {
@@ -524,39 +595,40 @@ export default function App() {
         try {
           await migrateSecureKeysFromPassword(wrapPassword, currentPassword, { silent: true });
         } catch (error) {
-          alert(error.message || '自动更新密钥封装失败');
+          alert(error.message || '已解锁，但未能自动改用新密码，以后仍可用旧密码打开。');
         }
       }
       return result.rootsByVersion;
     } catch (err) {
-      alert(err?.message?.includes('HTTPS') ? err.message : '无法解锁，请检查封装密码。');
+      alert(err?.message?.includes('HTTPS') ? err.message : '无法继续，请确认开启时的登录密码是否正确。');
       return null;
     }
   }
 
   async function promptUnlockSecureHistory(failedWrapped = null, material = secureMaterialRef.current) {
     const source = material || secureMaterialRef.current || await loadSecureMaterial();
+    const conversationId = source?.conversation?.conversationId || activeSecureConversationId();
     const pending = failedWrapped || (source?.historicalUserWrappedKeys || []).filter(
-      (item) => !getRootsByVersion()[item.keyVersion]
+      (item) => !getRootsByVersion(conversationId)[item.keyVersion]
     );
     if (!pending.length) {
       if (source) {
         setSecureChat(secureStateFromMaterial(source, selectedId));
         await loadLatestMessages(selectedId);
       } else {
-        alert('没有可解锁的历史加密消息。');
+        alert('没有可查看的旧加密聊天。');
       }
-      return getRootsByVersion();
+      return getRootsByVersion(conversationId);
     }
     assertSecureChatSupported();
     const values = await askSecureInput({
-      title: '解锁历史加密消息',
-      description: '解密成功后会自动把这些历史密钥改用当前登录密码封装。',
+      title: '查看以前的加密聊天',
+      description: '输入当时开启时的登录密码，即可再次查看。\n若已改过密码：先填当时的旧密码，再填现在的登录密码（相同可留空）。',
       fields: [
-        { key: 'password', label: '历史封装密码', type: 'password', autoComplete: 'current-password' },
-        { key: 'currentPassword', label: '当前登录密码（与上面相同时可留空）', type: 'password', autoComplete: 'current-password', required: false }
+        { key: 'password', label: '当时的登录密码', type: 'password', autoComplete: 'current-password' },
+        { key: 'currentPassword', label: '现在的登录密码（与上面相同可留空）', type: 'password', autoComplete: 'current-password', required: false }
       ],
-      confirmLabel: '确定'
+      confirmLabel: '查看'
     });
     if (!values?.password) return null;
     const wrapPassword = values.password;
@@ -564,42 +636,43 @@ export default function App() {
     try {
       await api.verifyLoginPassword(currentPassword);
     } catch {
-      alert('当前登录密码错误');
+      alert('现在的登录密码不正确');
       return null;
     }
     try {
       const { rootsByVersion, failed } = await unlockWrappedKeysWithPassword(
         wrapPassword,
         pending,
-        source.conversation.conversationId,
-        getRootsByVersion()
+        conversationId,
+        getRootsByVersion(conversationId)
       );
       if (failed.length === pending.length) {
-        alert('无法解锁历史消息，请确认历史封装密码是否正确。');
+        alert('无法打开这些旧消息，请确认当时的登录密码是否正确。');
         return null;
       }
       setSecureRoots(source.conversation.conversationId, rootsByVersion);
       setSecureChat(secureStateFromMaterial(source, selectedId));
       if (failed.length) {
-        alert(`已解锁部分历史版本，仍有 ${failed.length} 个版本未能解锁。`);
+        alert(`已打开一部分旧消息，还有 ${failed.length} 段需要别的旧密码。`);
       }
       await loadLatestMessages(selectedId);
       if (pending.length - failed.length > 0 && wrapPassword !== currentPassword) {
         try {
           await migrateSecureKeysFromPassword(wrapPassword, currentPassword, { silent: true });
         } catch (error) {
-          alert(error.message || '自动更新历史密钥封装失败');
+          alert(error.message || '已可查看，但未能自动改用新密码，以后仍可用旧密码打开。');
         }
       }
       return rootsByVersion;
     } catch (err) {
-      alert(err?.message?.includes('HTTPS') ? err.message : '无法解锁历史消息。');
+      alert(err?.message?.includes('HTTPS') ? err.message : '无法查看这些旧消息。');
       return null;
     }
   }
 
   function lockSecureChat() {
-    secureRootRef.current = null;
+    const conversationId = activeSecureConversationId();
+    clearSecureRoots(conversationId || null);
     setMessages([]);
     setSecureChat((current) => ({ ...current, unlocked: false, historyUnlocked: false }));
     loadLatestMessages(selectedId).catch(console.error);
@@ -610,7 +683,10 @@ export default function App() {
     assertSecureChatSupported();
     const material = secureMaterialRef.current || await loadSecureMaterial(selected.id);
     const keyVersion = material?.conversation?.nextKeyVersion || 1;
-    const password = await askCurrentLoginPassword('邀请开启安全聊天', '输入登录密码，向对方发送安全聊天邀请。');
+    const password = await askCurrentLoginPassword(
+      '邀请对方开启安全聊天',
+      '开启后，聊天文字将加密存储。需要双方同意才能开启。\n请输入登录密码，向对方发出邀请。'
+    );
     if (!password) return;
     const conversationId = makeConversationId(user.id, selected.id);
     const { publicKey, privateKey } = await generateEcdhKeyPair();
@@ -633,7 +709,7 @@ export default function App() {
       }
     });
     await loadSecureMaterial(selected.id);
-    alert('已发送邀请，等待对方同意。');
+    alert('邀请已发出。需要对方同意后才能开启。');
   }
 
   async function acceptSecureInvite() {
@@ -642,10 +718,13 @@ export default function App() {
     const material = secureMaterialRef.current || await loadSecureMaterial(selected.id);
     const peerPublicB64 = material?.peerHandshake?.publicKey;
     if (!peerPublicB64) {
-      alert('邀请信息无效或已过期。');
+      alert('邀请已失效，请让对方重新发起。');
       return;
     }
-    const password = await askCurrentLoginPassword('同意安全聊天', '输入登录密码以同意并完成本地密钥设置。');
+    const password = await askCurrentLoginPassword(
+      '同意开启安全聊天',
+      '开启后，聊天文字将加密存储。需要双方同意才能开启。\n请输入登录密码以同意。'
+    );
     if (!password) return;
     const conversationId = material.conversation.conversationId;
     const keyVersion = material.conversation.currentKeyVersion || 1;
@@ -657,10 +736,10 @@ export default function App() {
       publicKey: base64(publicKey),
       userWrappedKey
     });
-    setSecureRoots(conversationId, { ...getRootsByVersion(), [keyVersion]: rootKey });
+    setSecureRoots(conversationId, { ...getRootsByVersion(conversationId), [keyVersion]: rootKey });
     await loadSecureMaterial(selected.id);
     await loadLatestMessages(selected.id);
-    alert('已同意。等待对方确认后即可双方收发加密消息。');
+    alert('你已同意，等待对方完成开启。');
   }
 
   async function completeSecureInvite() {
@@ -668,10 +747,13 @@ export default function App() {
     assertSecureChatSupported();
     const material = secureMaterialRef.current || await loadSecureMaterial(selected.id);
     if (!material?.peerAccepted || !material?.peerHandshake?.publicKey || !material?.handshake?.wrappedPrivateKey) {
-      alert('对方尚未同意，或握手信息不完整。');
+      alert('对方还没有同意，或邀请已失效。请稍后再试，或重新邀请。');
       return;
     }
-    const password = await askCurrentLoginPassword('确认开启', '输入登录密码，完成安全聊天开启。');
+    const password = await askCurrentLoginPassword(
+      '完成开启',
+      '对方已同意。再输入一次登录密码，即可开始加密聊天。'
+    );
     if (!password) return;
     const conversationId = material.conversation.conversationId;
     const keyVersion = material.conversation.currentKeyVersion || 1;
@@ -681,37 +763,37 @@ export default function App() {
     const rootKey = await deriveSharedRootKey(privateKey, fromBase64(material.peerHandshake.publicKey));
     const userWrappedKey = await buildUserWrappedRoot(rootKey, password, conversationId, keyVersion);
     await api.completeSecureConversation({ conversationId, userWrappedKey });
-    setSecureRoots(conversationId, { ...getRootsByVersion(), [keyVersion]: rootKey });
+    setSecureRoots(conversationId, { ...getRootsByVersion(conversationId), [keyVersion]: rootKey });
     await loadSecureMaterial(selected.id);
     await loadLatestMessages(selected.id);
-    alert('安全聊天已开启。');
+    alert('已开启。聊天文字将加密存储。');
   }
 
   async function requestCloseSecureChat() {
     if (!secureChat?.conversationId) return;
     const result = await askSecureInput({
       title: '申请关闭安全聊天',
-      description: '关闭后将回到明文聊天。历史加密消息仍会保留，但需要你记得开启时所用的登录密码才能解密查看。若之后修改登录密码且未用旧密码解锁，旧消息可能无法解密。需要双方都确认后才会关闭。',
+      description: '关闭也需要双方同意。关闭后回到普通聊天；已加密保存的旧消息仍可用开启时的登录密码查看。',
       fields: [
-        { key: 'ack', type: 'checkbox', label: '我知道需要保留当时的登录密码才能查看历史加密消息' }
+        { key: 'ack', type: 'checkbox', label: '我明白：以后查看旧消息，需要记得开启时的登录密码' }
       ],
       confirmLabel: '申请关闭'
     });
     if (!result?.ack) return;
     await api.requestCloseSecureConversation(secureChat.conversationId);
     await loadSecureMaterial(selectedId);
-    alert('已申请关闭，等待对方确认。');
+    alert('已申请关闭，等待对方同意。');
   }
 
   async function confirmCloseSecureChat() {
     if (!secureChat?.conversationId) return;
     const result = await askSecureInput({
-      title: '确认关闭安全聊天',
-      description: '对方申请关闭安全聊天。关闭后回到明文聊天；历史密文会保留，需用当时的登录密码才能查看。',
+      title: '同意关闭安全聊天',
+      description: '关闭也需要双方同意。关闭后回到普通聊天；已加密保存的旧消息仍可用开启时的登录密码查看。',
       fields: [
-        { key: 'ack', type: 'checkbox', label: '我知道需要保留当时的登录密码才能查看历史加密消息' }
+        { key: 'ack', type: 'checkbox', label: '我明白：以后查看旧消息，需要记得开启时的登录密码' }
       ],
-      confirmLabel: '确认关闭'
+      confirmLabel: '同意关闭'
     });
     if (!result?.ack) return;
     await api.confirmCloseSecureConversation(secureChat.conversationId);
@@ -719,7 +801,7 @@ export default function App() {
     await loadSecureMaterial(selectedId);
     await loadLatestMessages(selectedId);
     await refreshContacts();
-    alert('安全聊天已关闭。可用「解锁历史消息」查看旧密文。');
+    alert('安全聊天已关闭。');
   }
 
   async function cancelCloseSecureChat() {
@@ -730,7 +812,7 @@ export default function App() {
 
   async function cancelSecureInvite() {
     if (!secureChat?.conversationId) return;
-    const ok = window.confirm('取消当前邀请？未完成的本次密钥不会保留。');
+    const ok = window.confirm('确定取消这次邀请吗？取消后需要重新邀请对方。');
     if (!ok) return;
     await api.disableSecureConversation(secureChat.conversationId);
     await loadSecureMaterial(selectedId);
@@ -738,7 +820,6 @@ export default function App() {
   }
 
   function selectContact(contact) {
-    secureRootRef.current = null;
     secureMaterialRef.current = null;
     setSecureChat({ status: 'off', unlocked: false, historyUnlocked: false });
     setMessages([]);
@@ -768,7 +849,10 @@ export default function App() {
     }
     api
       .me()
-      .then((data) => setUser(data.user))
+      .then((data) => {
+        hydrateSecureRoots(data.user.id);
+        setUser(data.user);
+      })
       .catch(() => localStorage.removeItem('doolulu.token'))
       .finally(() => setLoading(false));
   }, []);
@@ -852,7 +936,14 @@ export default function App() {
   }
 
   if (!user) {
-    return <AuthPanel onLogin={setUser} />;
+    return (
+      <AuthPanel
+        onLogin={(nextUser) => {
+          hydrateSecureRoots(nextUser.id);
+          setUser(nextUser);
+        }}
+      />
+    );
   }
 
   if (user.isAdmin) {
@@ -891,7 +982,7 @@ export default function App() {
         onChangePassword={async () => {
           const values = await askSecureInput({
             title: '修改登录密码',
-            description: '能用当前密码解开的安全聊天密钥会自动改用新密码封装；解不开的旧密钥会保留，之后仍可用对应旧密码查看。',
+            description: '改密后，能打开的加密聊天会自动跟上新密码。若还有更早的聊天用旧密码保护，之后输入对应旧密码仍可查看。',
             fields: [
               { key: 'currentPassword', label: '当前密码', type: 'password', autoComplete: 'current-password' },
               { key: 'newPassword', label: '新密码', type: 'password', autoComplete: 'new-password', minLength: 6 },
@@ -955,14 +1046,14 @@ export default function App() {
           onSend={async (text, quoteId) => {
             if (isSecureLive()) {
               if (secureChat.status === 'waiting_peer') {
-                throw new Error('请先完成安全聊天开启');
+                throw new Error('请先和对方完成安全聊天开启');
               }
               const material = secureMaterialRef.current;
               const keyVersion = material?.conversation?.currentKeyVersion;
               const rootKey = getRootsByVersion()[keyVersion];
               if (!material || !rootKey) {
                 await promptUnlockSecureChat();
-                throw new Error('请先解锁安全聊天');
+                throw new Error('请先输入密码，解锁后再发送');
               }
               const ownMessages = messagesRef.current.filter((message) => message.fromId === user.id && message.sequenceNumber);
               let nextSequence = Math.max(0, ...ownMessages.map((message) => Number(message.sequenceNumber) || 0)) + 1;
@@ -1049,7 +1140,7 @@ export default function App() {
           onRecall={async (messageId) => {
             const target = messagesRef.current.find((message) => message.id === messageId);
             if (target?.ciphertext) {
-              throw new Error('加密消息暂不支持撤回。');
+              throw new Error('加密消息暂不支持撤回');
             }
             const data = await api.recallMessage(messageId);
             upsertMessages(data.message);

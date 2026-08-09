@@ -22,29 +22,51 @@ function SecureChatPanel({
     try {
       await action?.();
     } catch (err) {
-      alert(err?.message || '安全聊天操作失败');
+      alert(err?.message || '操作没成功，请稍后再试。');
     }
   }
 
   const statusText = !secureChat
     ? '未开启'
     : secureChat.status === 'enabled'
-      ? (secureChat.unlocked ? '已解锁' : '已锁定')
+      ? (secureChat.unlocked ? '进行中，可正常聊天' : '已锁住，输入密码后继续')
       : secureChat.status === 'closing'
-        ? (secureChat.closeRequestedByMe ? '已申请关闭，等待对方确认' : '对方申请关闭，待你确认')
+        ? (secureChat.closeRequestedByMe ? '你已申请关闭，等待对方确认' : '对方想关闭，请你确认')
         : secureChat.status === 'waiting_peer'
           ? (secureChat.isInitiator
-            ? (secureChat.peerAccepted ? '对方已同意，待你确认' : '等待对方同意')
-            : (secureChat.peerAccepted ? '已同意，等待对方完成' : '收到邀请'))
+            ? (secureChat.peerAccepted ? '对方已同意，请点下方完成开启' : '已发出邀请，等待对方同意')
+            : (secureChat.peerAccepted ? '你已同意，等待对方完成开启' : '收到邀请，可同意开启'))
           : (secureChat.hasHistoricalKeys
-            ? (secureChat.historyUnlocked ? '未开启（历史已解锁）' : '未开启（有历史密文）')
+            ? (secureChat.historyUnlocked ? '已关闭，旧消息可查看' : '已关闭，旧消息需解锁后查看')
             : '未开启');
+
+  const helpText = !secureChat || secureChat.status === 'off'
+    ? (secureChat?.hasHistoricalKeys
+      ? '开启后，聊天文字将加密存储。需要双方同意才能开启。\n你们曾开通过，可用开启时的登录密码再次查看旧消息。'
+      : '开启后，聊天文字将加密存储。需要双方同意才能开启。')
+    : secureChat.status === 'waiting_peer'
+      ? (secureChat.isInitiator
+        ? (secureChat.peerAccepted
+          ? '对方已同意。点下方完成开启后，聊天文字将开始加密存储。'
+          : '邀请已发出。需要对方也同意后才能开启。')
+        : (secureChat.peerAccepted
+          ? '你已同意，等待对方完成开启。'
+          : '对方邀请开启安全聊天。同意后，聊天文字将加密存储。'))
+      : secureChat.status === 'enabled'
+        ? (secureChat.unlocked
+          ? '聊天文字正在加密存储。关闭也需要双方同意；也可先暂时锁定。'
+          : '安全聊天已开启。输入登录密码后即可继续查看和发送。')
+        : secureChat.status === 'closing'
+          ? (secureChat.closeRequestedByMe
+            ? '你已申请关闭，等待对方同意。'
+            : '对方申请关闭。同意后回到普通聊天；旧消息仍可加密保存，可用开启时的密码查看。')
+          : '开启后，聊天文字将加密存储。需要双方同意才能开启。';
 
   const actions = [];
   if (secureChat?.status === 'off') {
     actions.push({
       key: 'invite',
-      label: '邀请开启',
+      label: '邀请对方开启',
       variant: 'primary',
       disabled: !secureChatSupported,
       onClick: () => runSecureAction(onEnableSecureChat)
@@ -53,7 +75,7 @@ function SecureChatPanel({
   if (secureChat?.canUnlockHistory) {
     actions.push({
       key: 'unlock-history',
-      label: '解锁历史消息',
+      label: '查看以前的加密聊天',
       disabled: !secureChatSupported,
       onClick: () => runSecureAction(onUnlockSecureHistory)
     });
@@ -61,14 +83,14 @@ function SecureChatPanel({
   if (secureChat?.status === 'off' && secureChat.historyUnlocked && !secureChat.canUnlockHistory) {
     actions.push({
       key: 'lock-history',
-      label: '锁定历史',
+      label: '重新隐藏旧消息',
       onClick: () => runSecureAction(onLockSecureChat)
     });
   }
   if (secureChat?.canAcceptInvite) {
     actions.push({
       key: 'accept',
-      label: '同意邀请',
+      label: '同意开启',
       variant: 'primary',
       disabled: !secureChatSupported,
       onClick: () => runSecureAction(onAcceptSecureInvite)
@@ -77,7 +99,7 @@ function SecureChatPanel({
   if (secureChat?.canCompleteInvite) {
     actions.push({
       key: 'complete',
-      label: '确认开启',
+      label: '完成开启',
       variant: 'primary',
       disabled: !secureChatSupported,
       onClick: () => runSecureAction(onCompleteSecureInvite)
@@ -86,7 +108,7 @@ function SecureChatPanel({
   if ((secureChat?.status === 'enabled' || secureChat?.status === 'closing') && !secureChat.unlocked && secureChat.hasUserWrappedKey) {
     actions.push({
       key: 'unlock',
-      label: '解锁会话',
+      label: '输入密码继续',
       variant: 'primary',
       disabled: !secureChatSupported,
       onClick: () => runSecureAction(onUnlockSecureChat)
@@ -95,7 +117,7 @@ function SecureChatPanel({
   if ((secureChat?.status === 'enabled' || secureChat?.status === 'closing') && secureChat.unlocked) {
     actions.push({
       key: 'lock',
-      label: '锁定会话',
+      label: '暂时锁定',
       onClick: () => runSecureAction(onLockSecureChat)
     });
   }
@@ -110,20 +132,20 @@ function SecureChatPanel({
   if (secureChat?.status === 'closing' && secureChat.closeRequestedByMe) {
     actions.push({
       key: 'cancel-close',
-      label: '取消关闭申请',
+      label: '撤回关闭申请',
       onClick: () => runSecureAction(onCancelCloseSecureChat)
     });
   }
   if (secureChat?.status === 'closing' && !secureChat.closeRequestedByMe) {
     actions.push({
       key: 'confirm-close',
-      label: '确认关闭',
+      label: '同意关闭',
       variant: 'danger',
       onClick: () => runSecureAction(onConfirmCloseSecureChat)
     });
     actions.push({
       key: 'reject-close',
-      label: '拒绝关闭',
+      label: '暂不关闭',
       onClick: () => runSecureAction(onCancelCloseSecureChat)
     });
   }
@@ -145,7 +167,7 @@ function SecureChatPanel({
         </div>
         <div className="planner-drawer-title">
           <h2>安全聊天</h2>
-          <p>当前状态：{statusText}</p>
+          <p>当前：{statusText}</p>
         </div>
         {onClose && (
           <button type="button" className="planner-close-button" onClick={onClose} aria-label="收回安全设置">
@@ -155,17 +177,15 @@ function SecureChatPanel({
       </div>
 
       <div className="planner-drawer-controls secure-drawer-summary">
-        <p>
-          邀请对方同意后，双方用各自的登录密码保护会话密钥。服务器只存密文。关闭需双方确认，历史密钥会保留。
-        </p>
+        <p>{helpText}</p>
         {!secureChatSupported && (
-          <p className="secure-chat-warning">需要 HTTPS 才能使用安全聊天。</p>
+          <p className="secure-chat-warning">需要用 https 打开本站，才能使用安全聊天。</p>
         )}
       </div>
 
       <div className="planner-drawer-list secure-drawer-actions">
         {actions.length === 0 ? (
-          <div className="planner-drawer-empty">当前没有可执行的操作。</div>
+          <div className="planner-drawer-empty">暂时没有需要你处理的步骤。</div>
         ) : (
           actions.map((action) => (
             <button

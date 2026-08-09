@@ -509,24 +509,26 @@ function ChatWindow({
     return renderPlanner();
   }
 
+  // Only nudge when the user must act — avoid a permanent status strip over the chat.
   const secureStatusLabel = !secureChat
     ? ''
-    : secureChat.status === 'enabled'
-      ? (secureChat.unlocked ? '安全聊天已解锁' : '安全聊天已锁定')
+    : secureChat.status === 'enabled' && !secureChat.unlocked
+      ? '安全聊天已锁住，输入密码后继续'
       : secureChat.status === 'closing'
-        ? (secureChat.closeRequestedByMe ? '关闭申请待对方确认' : '对方申请关闭安全聊天')
+        ? (secureChat.closeRequestedByMe ? '已申请关闭，等待对方同意' : '对方申请关闭安全聊天')
         : secureChat.status === 'waiting_peer'
           ? (secureChat.isInitiator
-            ? (secureChat.peerAccepted ? '对方已同意，待你确认开启' : '等待对方同意安全聊天')
+            ? (secureChat.peerAccepted ? '对方已同意，请完成开启' : '等待对方同意开启')
             : (secureChat.peerAccepted ? '已同意，等待对方完成' : '收到安全聊天邀请'))
-          : (secureChat.hasHistoricalKeys
-            ? (secureChat.historyUnlocked ? '有历史密文（已解锁）' : '有历史密文，可在安全面板解锁')
-            : '');
+          : '';
+
+  const secureBannerVisible = Boolean(secureStatusLabel) && sideTool !== 'secure' && mobilePane !== 'secure';
+  const secureActive = secureChat?.status === 'enabled' || secureChat?.status === 'closing' || secureChat?.status === 'waiting_peer';
 
 
   return (
     <section className={`chat-panel ${sideTool ? 'planner-open' : ''}`}>
-      <div className={`chat-core ${mobilePane !== 'chat' ? 'mobile-planner-active' : ''}`}>
+      <div className={`chat-core ${mobilePane !== 'chat' ? 'mobile-planner-active' : ''} ${secureBannerVisible ? 'has-secure-banner' : ''}`}>
         <header className="chat-header">
           <button type="button" className="mobile-back-button" onClick={onBack} aria-label="返回联系人">
             返回
@@ -568,7 +570,7 @@ function ChatWindow({
           </button>
           <button
             type="button"
-            className={`planner-header-button ${sideTool === 'secure' ? 'active' : ''}`}
+            className={`planner-header-button ${sideTool === 'secure' ? 'active' : ''} ${secureActive ? 'secure-on' : ''}`}
             onClick={() => {
               setSideTool((tool) => (tool === 'secure' ? null : 'secure'));
               setMobilePane((pane) => (pane === 'secure' ? 'chat' : 'secure'));
@@ -577,16 +579,16 @@ function ChatWindow({
             安全
           </button>
         </header>
-        {secureStatusLabel && sideTool !== 'secure' && mobilePane !== 'secure' && (
+        {secureBannerVisible && (
           <button
             type="button"
-            className={`secure-chat-banner ${secureChat?.unlocked || secureChat?.historyUnlocked ? 'unlocked' : ''}`}
+            className="secure-chat-banner"
             onClick={() => {
               setSideTool('secure');
               setMobilePane('secure');
             }}
           >
-            {secureStatusLabel} · 打开安全面板
+            {secureStatusLabel}
           </button>
         )}
         {profileOpen && (
@@ -734,7 +736,7 @@ function ChatWindow({
                 ref={textareaRef}
                 value={text}
                 onChange={(event) => setText(event.target.value)}
-                placeholder={secureChat?.status !== 'off' && !secureChat.unlocked ? '解锁安全聊天后发送消息' : `发送给 ${contact.displayName}`}
+                placeholder={secureChat?.status !== 'off' && !secureChat.unlocked ? '输入密码解锁后即可发送' : `发送给 ${contact.displayName}`}
                 disabled={secureChat?.status !== 'off' && !secureChat.unlocked}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && event.ctrlKey) {

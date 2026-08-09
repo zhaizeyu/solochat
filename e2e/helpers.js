@@ -71,7 +71,7 @@ export async function openContact(page, displayNameOrUsername) {
 }
 
 export async function sendPlainText(page, text) {
-  const target = page.getByPlaceholder(/发送给|解锁安全聊天后发送消息/);
+  const target = page.getByPlaceholder(/发送给|输入密码解锁后即可发送/);
   await expectEnabledComposer(page);
   await target.fill(text);
   await page.getByRole('button', { name: '发送', exact: true }).click();
@@ -79,7 +79,7 @@ export async function sendPlainText(page, text) {
 }
 
 async function expectEnabledComposer(page) {
-  const target = page.getByPlaceholder(/发送给|解锁安全聊天后发送消息/);
+  const target = page.getByPlaceholder(/发送给|输入密码解锁后即可发送/);
   await expect(target).toBeEnabled({ timeout: 60_000 });
 }
 
@@ -114,7 +114,7 @@ export async function openSecurePanel(page) {
     await page.getByRole('button', { name: '收回安全设置' }).click();
     await panel.waitFor({ state: 'hidden' }).catch(() => {});
   }
-  // exact: true — avoid matching the "安全聊天已解锁 · 打开安全面板" banner
+  // exact: true — avoid matching status banners that also contain「安全」
   await page.getByRole('button', { name: '安全', exact: true }).click();
   await panel.waitFor({ timeout: 15_000 });
 }
