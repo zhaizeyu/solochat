@@ -31,7 +31,7 @@ function AuthPanel({ onLogin }) {
     <main className="auth-shell">
       <section className="auth-panel">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">d</div>
+          <div className="brand-mark" aria-hidden="true">D</div>
           <div>
             <h1>doolulu</h1>
             <p>多人联系人私聊</p>
