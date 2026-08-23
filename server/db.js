@@ -85,6 +85,10 @@ export function rowToMessage(row) {
     text: row.text || '',
     sticker: parseJson(row.stickerJson),
     quote: parseJson(row.quoteJson),
+    imagePath: row.imagePath || null,
+    imageDataUrl: row.imagePath || '',
+    imageExpiresAt: row.imageExpiresAt || null,
+    imageDeletedAt: row.imageDeletedAt || null,
     createdAt: row.createdAt,
     readAt: row.readAt || null,
     recalledAt: row.recalledAt || null
@@ -163,6 +167,9 @@ export function messageSelect(prefix = '') {
     ${prefix}text AS text,
     ${prefix}sticker_json AS "stickerJson",
     ${prefix}quote_json AS "quoteJson",
+    ${prefix}image_path AS "imagePath",
+    ${prefix}image_expires_at AS "imageExpiresAt",
+    ${prefix}image_deleted_at AS "imageDeletedAt",
     ${prefix}created_at AS "createdAt",
     ${prefix}read_at AS "readAt",
     ${prefix}recalled_at AS "recalledAt"
@@ -232,18 +239,29 @@ function stickerForClient(sticker) {
 
 function quoteForClient(quote) {
   if (!quote) return null;
+  const imageExpired = Boolean(quote.imageExpired || quote.imageDeletedAt);
   return {
     ...quote,
-    sticker: stickerForClient(quote.sticker)
+    sticker: stickerForClient(quote.sticker),
+    imageDataUrl: imageExpired ? '' : storedImageUrlForClient(quote.imageDataUrl || quote.imagePath || ''),
+    imageExpired: quote.kind === 'image' ? imageExpired : Boolean(quote.imageExpired)
   };
 }
 
 export function messageForClient(message) {
   if (!message) return null;
+  const expired = Boolean(message.imageDeletedAt) || (
+    message.kind === 'image'
+    && message.imageExpiresAt
+    && new Date(message.imageExpiresAt).getTime() <= Date.now()
+  );
   return {
     ...message,
     sticker: stickerForClient(message.sticker),
-    quote: quoteForClient(message.quote)
+    quote: quoteForClient(message.quote),
+    imageDataUrl: expired ? '' : storedImageUrlForClient(message.imagePath || message.imageDataUrl || ''),
+    imagePath: undefined,
+    imageExpired: message.kind === 'image' ? expired : Boolean(message.imageExpired)
   };
 }
 
@@ -502,6 +520,22 @@ async function createSchema() {
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT \'\'');
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_bg_preset TEXT NOT NULL DEFAULT \'soft\'');
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_bg_path TEXT');
+  await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS image_path TEXT');
+  await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS image_expires_at TEXT');
+  await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS image_deleted_at TEXT');
+  await query('ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS image_path TEXT');
+  await query('ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS image_expires_at TEXT');
+  await query('ALTER TABLE encrypted_messages ADD COLUMN IF NOT EXISTS image_deleted_at TEXT');
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_messages_image_expiry
+      ON messages(image_expires_at)
+      WHERE kind = 'image' AND image_deleted_at IS NULL
+  `);
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_encrypted_messages_image_expiry
+      ON encrypted_messages(image_expires_at)
+      WHERE image_path IS NOT NULL AND image_deleted_at IS NULL
+  `);
   await query('ALTER TABLE secure_conversations ADD COLUMN IF NOT EXISTS close_requested_by TEXT');
   await query('ALTER TABLE secure_conversations ADD COLUMN IF NOT EXISTS close_requested_at TEXT');
 }

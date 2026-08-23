@@ -1315,6 +1315,76 @@ textarea:focus {
   object-fit: contain;
 }
 
+.message-image-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.message-image {
+  display: block;
+  max-width: min(260px, 58vw);
+  max-height: 320px;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
+.chat-image-expired {
+  margin: 0;
+  opacity: 0.82;
+  font-size: 0.92rem;
+}
+
+.image-bubble .message-meta {
+  margin-top: 6px;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.image-upload-progress {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--hairline-soft);
+  font-size: 0.82rem;
+  color: var(--ink-subtle);
+}
+
+.image-upload-progress-bar {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #4f8cff, #7ad0ff);
+  transition: width 120ms linear;
+}
+
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 24px;
+  border: 0;
+  background: rgba(12, 16, 24, 0.78);
+  cursor: zoom-out;
+}
+
+.image-lightbox img {
+  max-width: min(960px, 94vw);
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 12px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+}
+
 .message-recalled {
   color: var(--ink-subtle);
   font-style: italic;

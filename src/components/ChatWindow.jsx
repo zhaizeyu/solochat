@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
 import { Textarea } from '../../components/ui/textarea.jsx';
 import { Button, emojiGroups, resolveBubbleTheme, resolveChatBg } from '../lib/ui.jsx';
-import { readImageFile } from '../lib/media.js';
+import { readChatImageFile, readImageFile } from '../lib/media.js';
 import { Avatar } from './Avatar.jsx';
 import { Twemoji, renderTwemojiText } from './Twemoji.jsx';
 import { CouplePlannerPanel } from './CouplePlannerPanel.jsx';
@@ -22,6 +22,7 @@ function ChatWindow({
   loadingOlderMessages,
   onLoadOlderMessages,
   onSend,
+  onSendImage,
   onSendSticker,
   onAddSticker,
   onDeleteStickers,
@@ -53,6 +54,10 @@ function ChatWindow({
   const [mobilePane, setMobilePane] = useState('chat');
   const [plannerTasks, setPlannerTasks] = useState([]);
   const [moments, setMoments] = useState([]);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageProgress, setImageProgress] = useState(0);
+  const [lightboxUrl, setLightboxUrl] = useState('');
+  const imageInputRef = useRef(null);
   const bottomRef = useRef(null);
   const streamRef = useRef(null);
   const textareaRef = useRef(null);
@@ -313,6 +318,8 @@ function ChatWindow({
   function renderQuote(quoted, interactive = false) {
     if (!quoted) return null;
     const quotedSticker = quoted.kind === 'sticker' && quoted.sticker;
+    const quotedImage = quoted.kind === 'image';
+    const imageExpired = Boolean(quoted.imageExpired || quoted.imageDeletedAt);
     return (
       <button
         type="button"
@@ -326,6 +333,14 @@ function ChatWindow({
           <span className="quote-sticker-line">
             <img src={quoted.sticker.imageDataUrl} alt="表情包" />
           </span>
+        ) : quotedImage ? (
+          imageExpired || !quoted.imageDataUrl ? (
+            <span>图片已过期删除</span>
+          ) : (
+            <span className="quote-sticker-line">
+              <img src={quoted.imageDataUrl} alt="图片" />
+            </span>
+          )
         ) : (
           <span>{renderTwemojiText(quoted.text)}</span>
         )}
@@ -417,6 +432,38 @@ function ChatWindow({
       pendingScrollToBottomRef.current = false;
       setQuote(currentQuote);
       alert(err.message);
+    }
+  }
+
+  async function sendChatImage(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !contact || imageBusy) return;
+    if (secureChat?.status !== 'off' && !secureChat.unlocked) {
+      alert('请先输入密码解锁后再发送图片');
+      return;
+    }
+    const currentQuote = quote;
+    setQuote(null);
+    setEmojiOpen(false);
+    setStickerOpen(false);
+    setImageBusy(true);
+    setImageProgress(0.05);
+    pendingScrollToBottomRef.current = true;
+    try {
+      const imageDataUrl = await readChatImageFile(file, {
+        onProgress: (value) => setImageProgress(Math.max(0.05, Math.min(0.95, Number(value) || 0)))
+      });
+      setImageProgress(0.97);
+      await onSendImage?.(imageDataUrl, currentQuote?.id || '');
+      setImageProgress(1);
+    } catch (err) {
+      pendingScrollToBottomRef.current = false;
+      setQuote(currentQuote);
+      alert(err.message);
+    } finally {
+      setImageBusy(false);
+      setImageProgress(0);
     }
   }
 
@@ -682,6 +729,8 @@ function ChatWindow({
             const bubblePreset = getBubblePreset(sender?.bubbleTheme);
             const recalled = Boolean(message.recalledAt);
             const stickerBubble = message.kind === 'sticker' && !recalled;
+            const imageExpired = Boolean(message.imageExpired || message.imageDeletedAt);
+            const imageBubble = message.kind === 'image' && !recalled && !imageExpired && Boolean(message.imageDataUrl);
             const canAddSticker = stickerBubble && !mine && message.sticker;
             const stickerSaved = canAddSticker && hasSavedSticker(message.sticker);
             const savingSticker = savingStickerMessageIds.includes(message.id);
@@ -697,8 +746,8 @@ function ChatWindow({
               >
                 {!mine && <Avatar user={contact} size="tiny" />}
                 <div
-                  className={`message-bubble ${stickerBubble ? 'sticker-bubble' : ''}`}
-                  style={getMessageBubbleStyle(bubblePreset, stickerBubble)}
+                  className={`message-bubble ${stickerBubble || imageBubble ? 'sticker-bubble' : ''}${imageBubble ? ' image-bubble' : ''}`}
+                  style={getMessageBubbleStyle(bubblePreset, stickerBubble || imageBubble)}
                 >
                   <div>
                     {recalled ? (
@@ -708,6 +757,18 @@ function ChatWindow({
                         {renderQuote(message.quote, true)}
                         {message.kind === 'sticker' && message.sticker ? (
                           <img className="message-sticker" src={message.sticker.imageDataUrl} alt={message.sticker.name || '表情包'} />
+                        ) : message.kind === 'image' ? (
+                          imageExpired || !message.imageDataUrl ? (
+                            <p className="chat-image-expired">图片已过期删除</p>
+                          ) : (
+                            <button
+                              type="button"
+                              className="message-image-button"
+                              onClick={() => setLightboxUrl(message.imageDataUrl)}
+                            >
+                              <img className="message-image" src={message.imageDataUrl} alt="图片" loading="lazy" />
+                            </button>
+                          )
                         ) : (
                           <p>{renderTwemojiText(message.text)}</p>
                         )}
@@ -786,8 +847,30 @@ function ChatWindow({
                 >
                   <Twemoji emoji="❤️" className="toolbar-icon" />
                 </button>
+                <button
+                  type="button"
+                  title="发送临时图片（仅保留到次日，每天定时清理）"
+                  disabled={imageBusy || (secureChat?.status !== 'off' && !secureChat.unlocked)}
+                  onClick={() => imageInputRef.current?.click()}
+                >
+                  <Twemoji emoji="🖼️" className="toolbar-icon" />
+                </button>
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden-file-input"
+                  onChange={sendChatImage}
+                  disabled={imageBusy}
+                />
               </div>
             </div>
+            {imageBusy && (
+              <div className="image-upload-progress" role="status">
+                <div className="image-upload-progress-bar" style={{ width: `${Math.round(imageProgress * 100)}%` }} />
+                <span>正在发送图片… {Math.round(imageProgress * 100)}%</span>
+              </div>
+            )}
           </div>
           <Button type="submit" variant="primary" className="send-button" title="发送消息">发送</Button>
           {emojiOpen && (
@@ -859,6 +942,11 @@ function ChatWindow({
       <div className="chat-desktop-planner">
         {sideTool === 'secure' ? renderSecure() : sideTool === 'moments' ? renderMoments() : renderPlanner()}
       </div>
+      {lightboxUrl && (
+        <button type="button" className="image-lightbox" onClick={() => setLightboxUrl('')} aria-label="关闭预览">
+          <img src={lightboxUrl} alt="图片预览" />
+        </button>
+      )}
     </section>
   );
 }

@@ -20,6 +20,7 @@ export async function handleContacts(req, res, pathName, user) {
         last_plain.text AS "lastText",
         last_plain.kind AS "lastKind",
         last_plain.recalled_at AS "lastRecalledAt",
+        last_plain.image_deleted_at AS "lastImageDeletedAt",
         CASE
           WHEN last_plain.created_at IS NULL THEN last_encrypted.created_at
           WHEN last_encrypted.created_at IS NULL THEN last_plain.created_at
@@ -34,7 +35,7 @@ export async function handleContacts(req, res, pathName, user) {
       FROM contacts c
       JOIN users u ON u.id = c.contact_id
       LEFT JOIN LATERAL (
-        SELECT m.text, m.kind, m.recalled_at, m.created_at
+        SELECT m.text, m.kind, m.recalled_at, m.image_deleted_at, m.created_at
         FROM messages m
         WHERE m.conversation_id = CASE
           WHEN ? < u.id THEN ? || ':' || u.id
@@ -104,7 +105,8 @@ export async function handleContacts(req, res, pathName, user) {
           : messagePreview({
             text: row.lastText || '',
             kind: row.lastKind || 'text',
-            recalledAt: row.lastRecalledAt || null
+            recalledAt: row.lastRecalledAt || null,
+            imageDeletedAt: row.lastImageDeletedAt || null
           }),
         lastMessageAt: row.lastMessageAt || null,
         unreadCount: row.unreadCount

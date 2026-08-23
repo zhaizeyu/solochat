@@ -60,6 +60,12 @@ const api = {
       body: JSON.stringify({ toId, stickerId, quoteId, kind: 'sticker' })
     });
   },
+  sendImage(toId, imageDataUrl, quoteId) {
+    return this.request('/api/messages', {
+      method: 'POST',
+      body: JSON.stringify({ toId, imageDataUrl, quoteId, kind: 'image' })
+    });
+  },
   markRead(contactId) {
     return this.request(`/api/messages/${contactId}/read`, { method: 'POST' });
   },

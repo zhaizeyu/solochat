@@ -1,6 +1,11 @@
 import crypto from 'node:crypto';
 import { recallWindowMs } from '../config.js';
 import {
+  deleteChatImageStorage,
+  ensureMessageImageState,
+  saveChatImageDataUrl
+} from '../chat-images.js';
+import {
   areContacts,
   execTransaction,
   getDb,
@@ -13,6 +18,7 @@ import {
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
 import { isSecureConversationActive } from './secure-conversations.js';
+import { storedImageUrlForClient } from '../uploads.js';
 import { conversationKey, messagePreview, parseJson, stringifyJson } from '../utils.js';
 
 async function updateQuotesForRecalledMessage(message, now) {
@@ -36,6 +42,14 @@ async function updateQuotesForRecalledMessage(message, now) {
       );
     }
   }
+}
+
+async function mapMessagesForClient(messages) {
+  const mapped = [];
+  for (const message of messages) {
+    mapped.push(messageForClient(await ensureMessageImageState(message)));
+  }
+  return mapped;
 }
 
 export async function handleMessages(req, res, pathName, user, url) {
@@ -96,7 +110,7 @@ export async function handleMessages(req, res, pathName, user, url) {
             .get(key, firstCreatedAt)
         )
       : false;
-    return json(res, 200, { messages: messages.map(messageForClient), hasMore });
+    return json(res, 200, { messages: await mapMessagesForClient(messages), hasMore });
   }
 
   if (req.method === 'POST' && pathName.startsWith('/api/messages/') && pathName.endsWith('/read')) {
@@ -140,16 +154,20 @@ export async function handleMessages(req, res, pathName, user, url) {
       await db.prepare('UPDATE messages SET recalled_at = ?, text = ? WHERE id = ?').run(now, '', message.id);
       await updateQuotesForRecalledMessage(message, now);
     });
-    return json(res, 200, { message: messageForClient(await getMessageById(message.id)) });
+    if (message.kind === 'image' && message.imagePath && !message.imageDeletedAt) {
+      await deleteChatImageStorage(message.imagePath);
+    }
+    return json(res, 200, { message: messageForClient(await ensureMessageImageState(await getMessageById(message.id))) });
   }
 
   if (req.method === 'POST' && pathName === '/api/messages') {
     const body = await readBody(req);
     const toId = String(body.toId || '');
-    const kind = body.kind === 'sticker' ? 'sticker' : 'text';
+    const kind = body.kind === 'sticker' ? 'sticker' : body.kind === 'image' ? 'image' : 'text';
     const text = String(body.text || '').trim();
     const quoteId = String(body.quoteId || '');
     const stickerId = String(body.stickerId || '');
+    const imageDataUrl = String(body.imageDataUrl || '');
     const target = await getUserById(toId);
     if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) {
       return json(res, 404, { message: '联系人不存在' });
@@ -161,14 +179,25 @@ export async function handleMessages(req, res, pathName, user, url) {
       return json(res, 400, { message: '消息最多 1000 字' });
     }
     let sticker = null;
+    let imagePath = null;
+    let imageExpiresAt = null;
     if (kind === 'sticker') {
       sticker = await getStickerByIdForOwner(stickerId, user.id);
       if (!sticker) {
         return json(res, 404, { message: '表情包不存在' });
       }
     }
+    if (kind === 'image') {
+      try {
+        const saved = await saveChatImageDataUrl(imageDataUrl, user.id);
+        imagePath = saved.imagePath;
+        imageExpiresAt = saved.expiresAt;
+      } catch (error) {
+        return json(res, error.statusCode || 400, { message: error.message || '图片上传失败' });
+      }
+    }
     const conversationId = conversationKey(user.id, target.id);
-    if (kind === 'text' && (await isSecureConversationActive(conversationId))) {
+    if ((kind === 'text' || kind === 'image') && (await isSecureConversationActive(conversationId))) {
       return json(res, 409, { message: '安全聊天进行中，请直接发送消息（会自动加密）' });
     }
     let quote = null;
@@ -194,6 +223,10 @@ export async function handleMessages(req, res, pathName, user, url) {
               imageDataUrl: quoted.sticker.imageDataUrl
             }
           : null,
+        imageDataUrl: quoted.kind === 'image' && !quoted.imageDeletedAt
+          ? storedImageUrlForClient(quoted.imagePath || '')
+          : null,
+        imageExpired: quoted.kind === 'image' ? Boolean(quoted.imageDeletedAt || quoted.imageExpired) : false,
         createdAt: quoted.createdAt,
         recalledAt: quoted.recalledAt || null
       };
@@ -204,7 +237,7 @@ export async function handleMessages(req, res, pathName, user, url) {
       fromId: user.id,
       toId: target.id,
       kind,
-      text: kind === 'sticker' ? '[表情包]' : text,
+      text: kind === 'sticker' ? '[表情包]' : kind === 'image' ? '[图片]' : text,
       sticker: sticker
         ? {
             id: sticker.id,
@@ -212,6 +245,9 @@ export async function handleMessages(req, res, pathName, user, url) {
             imageDataUrl: sticker.imageDataUrl
           }
         : null,
+      imagePath,
+      imageExpiresAt,
+      imageDeletedAt: null,
       quote,
       createdAt: new Date().toISOString(),
       readAt: null,
@@ -220,8 +256,9 @@ export async function handleMessages(req, res, pathName, user, url) {
     await db.prepare(`
       INSERT INTO messages (
         id, conversation_id, from_id, to_id, kind, text, sticker_json, quote_json,
+        image_path, image_expires_at, image_deleted_at,
         created_at, read_at, recalled_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       message.id,
       message.conversationId,
@@ -231,6 +268,9 @@ export async function handleMessages(req, res, pathName, user, url) {
       message.text,
       stringifyJson(message.sticker),
       stringifyJson(message.quote),
+      message.imagePath,
+      message.imageExpiresAt,
+      null,
       message.createdAt,
       null,
       null

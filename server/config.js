@@ -74,6 +74,18 @@ export const tlsKeyPath = process.env.TLS_KEY_PATH || path.join(rootDir, 'data',
 export const useHttps = String(process.env.USE_HTTPS || 'false').toLowerCase() === 'true';
 export const recallWindowMs = 8 * 60 * 1000;
 export const maxImageDataUrlLength = 4_300_000;
+export const chatImageMaxBytes = 2 * 1024 * 1024;
+export const chatImageMaxDataUrlLength = Math.ceil(chatImageMaxBytes * 4 / 3) + 128;
+/** Temporary chat images are kept until the next day's daily cleanup. */
+export const chatImageTtlMs = 24 * 60 * 60 * 1000;
+/** Local hour (0-23) for the daily chat-image cleanup sweep. Default 4 = 04:00. */
+export const chatImageCleanupHour = Math.min(
+  23,
+  Math.max(0, Number(process.env.CHAT_IMAGE_CLEANUP_HOUR ?? 4) || 4)
+);
+/** IANA timezone for the daily cleanup clock. Default Asia/Shanghai. */
+export const chatImageCleanupTimeZone = process.env.CHAT_IMAGE_CLEANUP_TZ || 'Asia/Shanghai';
+export const chatImageUploadHourlyLimit = 60;
 export const bubbleThemes = new Set(['mint', 'pink', 'purple', 'sky', 'peach', 'lavender']);
 export const chatBgPresets = new Set(['soft', 'paper', 'dusk', 'ocean', 'plain']);
 export const adminUsername = 'admin';

@@ -259,6 +259,80 @@ export default function App() {
     setMessages((current) => mergeMessages(current, items));
   }
 
+  function buildSecureQuote(quoteId) {
+    const quote = quoteId ? messagesRef.current.find((message) => message.id === quoteId) : null;
+    if (!quote) return null;
+    const imageExpired = Boolean(quote.imageExpired || quote.imageDeletedAt);
+    return {
+      id: quote.id,
+      fromId: quote.fromId,
+      authorName: quote.fromId === user.id ? user.displayName : selected.displayName,
+      text: quote.kind === 'image'
+        ? (imageExpired ? '[图片已过期删除]' : '[图片]')
+        : (quote.text || ''),
+      kind: quote.kind || 'text',
+      imageExpired: quote.kind === 'image' ? imageExpired : false,
+      recalledAt: quote.recalledAt || null
+    };
+  }
+
+  async function sendSecureChatPayload({ kind, text, quoteId, imageDataUrl }) {
+    if (secureChat.status === 'waiting_peer') {
+      throw new Error('请先和对方完成安全聊天开启');
+    }
+    const material = secureMaterialRef.current;
+    const keyVersion = material?.conversation?.currentKeyVersion;
+    const rootKey = getRootsByVersion()[keyVersion];
+    if (!material || !rootKey) {
+      await promptUnlockSecureChat();
+      throw new Error('请先输入密码，解锁后再发送');
+    }
+    const ownMessages = messagesRef.current.filter((message) => message.fromId === user.id && message.sequenceNumber);
+    let nextSequence = Math.max(0, ...ownMessages.map((message) => Number(message.sequenceNumber) || 0)) + 1;
+    try {
+      const seq = await api.nextEncryptedSequence(selected.id, keyVersion);
+      nextSequence = Math.max(nextSequence, Number(seq.nextSequence) || 1);
+    } catch {
+      // Fall back to local estimate if sequence endpoint fails.
+    }
+    const quotePayload = buildSecureQuote(quoteId);
+    const quoteMessage = quoteId ? messagesRef.current.find((message) => message.id === quoteId) : null;
+    const payload = { kind, text, quote: quotePayload };
+    async function encryptAt(sequenceNumber) {
+      return encryptMessage(rootKey, material.conversation.conversationId, user.id, sequenceNumber, payload);
+    }
+    let data;
+    try {
+      const encrypted = await encryptAt(nextSequence);
+      data = await api.sendEncryptedMessage({
+        toId: selected.id,
+        ...encrypted,
+        keyVersion,
+        ...(imageDataUrl ? { imageDataUrl } : {})
+      });
+    } catch (error) {
+      if (!String(error.message || '').includes('冲突')) throw error;
+      const seq = await api.nextEncryptedSequence(selected.id, keyVersion);
+      const encrypted = await encryptAt(Number(seq.nextSequence) || nextSequence + 1);
+      data = await api.sendEncryptedMessage({
+        toId: selected.id,
+        ...encrypted,
+        keyVersion,
+        ...(imageDataUrl ? { imageDataUrl } : {})
+      });
+    }
+    upsertMessages({
+      ...data.message,
+      kind,
+      text: kind === 'image' ? '[图片]' : text,
+      quote: quoteMessage || null,
+      sticker: null,
+      imageDataUrl: kind === 'image' ? (data.message.imageDataUrl || '') : '',
+      imageExpired: false
+    });
+    await refreshContacts();
+  }
+
   function markMessagesReadLocally(contactId, readAt) {
     if (!readAt) return;
     setMessages((items) =>
@@ -358,12 +432,17 @@ export default function App() {
     for (const message of encryptedMessages) {
       const rootKey = rootsByVersion[message.keyVersion];
       if (!rootKey) {
+        const looksLikeImage = Boolean(message.imageDataUrl || message.imageExpired || message.imageDeletedAt);
         decrypted.push({
           ...message,
-          kind: 'text',
-          text: '（加密消息，输入登录密码后可查看）',
+          kind: looksLikeImage ? 'image' : 'text',
+          text: looksLikeImage
+            ? (message.imageExpired || message.imageDeletedAt ? '[图片已过期删除]' : '（加密消息，输入登录密码后可查看）')
+            : '（加密消息，输入登录密码后可查看）',
           quote: null,
           sticker: null,
+          imageDataUrl: '',
+          imageExpired: Boolean(message.imageExpired || message.imageDeletedAt),
           decryptFailed: true,
           needsHistoryUnlock: true
         });
@@ -371,12 +450,20 @@ export default function App() {
       }
       try {
         const payload = await decryptMessage(rootKey, message);
+        const kind = payload.kind || 'text';
+        const imageExpired = kind === 'image'
+          ? Boolean(message.imageExpired || message.imageDeletedAt)
+          : Boolean(message.imageExpired);
         decrypted.push({
           ...message,
-          kind: payload.kind || 'text',
-          text: payload.text || '',
+          kind,
+          text: kind === 'image'
+            ? (imageExpired ? '[图片已过期删除]' : (payload.text || '[图片]'))
+            : (payload.text || ''),
           quote: payload.quote || null,
-          sticker: payload.sticker || null
+          sticker: payload.sticker || null,
+          imageDataUrl: kind === 'image' && !imageExpired ? (message.imageDataUrl || '') : '',
+          imageExpired
         });
       } catch {
         decrypted.push({
@@ -385,6 +472,8 @@ export default function App() {
           text: '消息完整性校验失败，内容可能已损坏。',
           quote: null,
           sticker: null,
+          imageDataUrl: '',
+          imageExpired: false,
           decryptFailed: true
         });
       }
@@ -1080,82 +1169,24 @@ export default function App() {
           onLoadOlderMessages={() => loadOlderMessages(selected.id).catch(console.error)}
           onSend={async (text, quoteId) => {
             if (isSecureLive()) {
-              if (secureChat.status === 'waiting_peer') {
-                throw new Error('请先和对方完成安全聊天开启');
-              }
-              const material = secureMaterialRef.current;
-              const keyVersion = material?.conversation?.currentKeyVersion;
-              const rootKey = getRootsByVersion()[keyVersion];
-              if (!material || !rootKey) {
-                await promptUnlockSecureChat();
-                throw new Error('请先输入密码，解锁后再发送');
-              }
-              const ownMessages = messagesRef.current.filter((message) => message.fromId === user.id && message.sequenceNumber);
-              let nextSequence = Math.max(0, ...ownMessages.map((message) => Number(message.sequenceNumber) || 0)) + 1;
-              try {
-                const seq = await api.nextEncryptedSequence(selected.id, keyVersion);
-                nextSequence = Math.max(nextSequence, Number(seq.nextSequence) || 1);
-              } catch {
-                // Fall back to local estimate if sequence endpoint fails.
-              }
-              const quote = quoteId ? messagesRef.current.find((message) => message.id === quoteId) : null;
-              const encrypted = await encryptMessage(rootKey, material.conversation.conversationId, user.id, nextSequence, {
-                kind: 'text',
-                text,
-                quote: quote ? {
-                  id: quote.id,
-                  fromId: quote.fromId,
-                  authorName: quote.fromId === user.id ? user.displayName : selected.displayName,
-                  text: quote.text,
-                  kind: quote.kind || 'text',
-                  recalledAt: quote.recalledAt || null
-                } : null
-              });
-              let data;
-              try {
-                data = await api.sendEncryptedMessage({
-                  toId: selected.id,
-                  ...encrypted,
-                  keyVersion
-                });
-              } catch (error) {
-                if (!String(error.message || '').includes('冲突')) throw error;
-                const seq = await api.nextEncryptedSequence(selected.id, keyVersion);
-                const retryEncrypted = await encryptMessage(
-                  rootKey,
-                  material.conversation.conversationId,
-                  user.id,
-                  Number(seq.nextSequence) || nextSequence + 1,
-                  {
-                    kind: 'text',
-                    text,
-                    quote: quote ? {
-                      id: quote.id,
-                      fromId: quote.fromId,
-                      authorName: quote.fromId === user.id ? user.displayName : selected.displayName,
-                      text: quote.text,
-                      kind: quote.kind || 'text',
-                      recalledAt: quote.recalledAt || null
-                    } : null
-                  }
-                );
-                data = await api.sendEncryptedMessage({
-                  toId: selected.id,
-                  ...retryEncrypted,
-                  keyVersion
-                });
-              }
-              upsertMessages({
-                ...data.message,
-                kind: 'text',
-                text,
-                quote: quote || null,
-                sticker: null
-              });
-              await refreshContacts();
+              await sendSecureChatPayload({ kind: 'text', text, quoteId });
               return;
             }
             const data = await api.sendQuotedMessage(selected.id, text, quoteId);
+            upsertMessages(data.message);
+            await refreshContacts();
+          }}
+          onSendImage={async (imageDataUrl, quoteId) => {
+            if (isSecureLive()) {
+              await sendSecureChatPayload({
+                kind: 'image',
+                text: '[图片]',
+                quoteId,
+                imageDataUrl
+              });
+              return;
+            }
+            const data = await api.sendImage(selected.id, imageDataUrl, quoteId);
             upsertMessages(data.message);
             await refreshContacts();
           }}

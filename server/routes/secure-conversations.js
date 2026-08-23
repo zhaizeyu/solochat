@@ -7,6 +7,11 @@ import {
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
 import { conversationKey, parseJson, stringifyJson } from '../utils.js';
+import { storedImageUrlForClient } from '../uploads.js';
+import {
+  ensureMessageImageState,
+  saveChatImageDataUrl
+} from '../chat-images.js';
 
 const cryptoVersion = 2;
 const maxWrappedKeyBytes = 2048;
@@ -735,6 +740,22 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     const sequenceNumber = cleanPositiveInteger(body.sequenceNumber);
     const messageCryptoVersion = cleanPositiveInteger(body.cryptoVersion, cryptoVersion);
     const keyVersion = cleanPositiveInteger(body.keyVersion, secure.current_key_version);
+    let imagePath = String(body.imagePath || '').trim() || null;
+    let imageExpiresAt = String(body.imageExpiresAt || '').trim() || null;
+    const imageDataUrl = String(body.imageDataUrl || '');
+    if (imageDataUrl) {
+      try {
+        const saved = await saveChatImageDataUrl(imageDataUrl, user.id);
+        imagePath = saved.imagePath;
+        imageExpiresAt = saved.expiresAt;
+      } catch (error) {
+        return json(res, error.statusCode || 400, { message: error.message || '图片上传失败' });
+      }
+    } else if (imagePath) {
+      if (!imageExpiresAt || Number.isNaN(new Date(imageExpiresAt).getTime())) {
+        return json(res, 400, { message: '临时图片过期时间无效' });
+      }
+    }
     if (!/^[0-9a-f-]{36}$/i.test(messageId)) return json(res, 400, { message: '消息 ID 无效' });
     if (!validBase64Bytes(ciphertext, { max: maxCiphertextBytes })) return json(res, 400, { message: '密文无效' });
     if (!validGcmIv(iv)) return json(res, 400, { message: 'IV 无效' });
@@ -745,8 +766,9 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
       await db.prepare(`
         INSERT INTO encrypted_messages (
           message_id, conversation_id, sender_id, recipient_id, ciphertext, iv,
-          sequence_number, crypto_version, key_version, created_at, read_at, recalled_at, expires_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+          sequence_number, crypto_version, key_version, created_at, read_at, recalled_at, expires_at,
+          image_path, image_expires_at, image_deleted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, NULL)
       `).run(
         messageId,
         context.conversationId,
@@ -757,7 +779,9 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
         sequenceNumber,
         messageCryptoVersion,
         keyVersion,
-        now
+        now,
+        imagePath,
+        imageExpiresAt
       );
     } catch (error) {
       if (String(error.message || '').includes('unique') || error.code === '23505') {
@@ -776,6 +800,10 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
         sequenceNumber,
         cryptoVersion: messageCryptoVersion,
         keyVersion,
+        imageDataUrl: storedImageUrlForClient(imagePath || ''),
+        imageExpiresAt,
+        imageDeletedAt: null,
+        imageExpired: false,
         createdAt: now,
         readAt: null,
         recalledAt: null
@@ -796,7 +824,9 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
         SELECT message_id AS id, conversation_id AS "conversationId", sender_id AS "fromId",
                recipient_id AS "toId", ciphertext, iv, sequence_number AS "sequenceNumber",
                crypto_version AS "cryptoVersion", key_version AS "keyVersion",
-               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt"
+               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt",
+               image_path AS "imagePath", image_expires_at AS "imageExpiresAt",
+               image_deleted_at AS "imageDeletedAt"
         FROM encrypted_messages
         WHERE conversation_id = ? AND created_at > ?
         ORDER BY created_at ASC
@@ -807,7 +837,9 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
         SELECT message_id AS id, conversation_id AS "conversationId", sender_id AS "fromId",
                recipient_id AS "toId", ciphertext, iv, sequence_number AS "sequenceNumber",
                crypto_version AS "cryptoVersion", key_version AS "keyVersion",
-               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt"
+               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt",
+               image_path AS "imagePath", image_expires_at AS "imageExpiresAt",
+               image_deleted_at AS "imageDeletedAt"
         FROM encrypted_messages
         WHERE conversation_id = ? AND created_at < ?
         ORDER BY created_at DESC
@@ -819,7 +851,9 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
         SELECT message_id AS id, conversation_id AS "conversationId", sender_id AS "fromId",
                recipient_id AS "toId", ciphertext, iv, sequence_number AS "sequenceNumber",
                crypto_version AS "cryptoVersion", key_version AS "keyVersion",
-               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt"
+               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt",
+               image_path AS "imagePath", image_expires_at AS "imageExpiresAt",
+               image_deleted_at AS "imageDeletedAt"
         FROM encrypted_messages
         WHERE conversation_id = ?
         ORDER BY created_at DESC
@@ -827,8 +861,23 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
       `).all(context.conversationId, limit);
       rows.reverse();
     }
+    const messages = [];
+    for (const row of rows) {
+      const normalized = await ensureMessageImageState({
+        ...row,
+        kind: row.imagePath || row.imageDeletedAt ? 'image' : 'text'
+      });
+      const { imagePath, ...rest } = row;
+      messages.push({
+        ...rest,
+        imageDataUrl: normalized.imageExpired ? '' : storedImageUrlForClient(imagePath || ''),
+        imageExpiresAt: row.imageExpiresAt || null,
+        imageDeletedAt: normalized.imageDeletedAt || row.imageDeletedAt || null,
+        imageExpired: Boolean(normalized.imageExpired)
+      });
+    }
     const hasMore = rows.length >= limit;
-    return json(res, 200, { messages: rows, hasMore });
+    return json(res, 200, { messages, hasMore });
   }
 
   return false;

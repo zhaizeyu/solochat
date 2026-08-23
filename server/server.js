@@ -5,6 +5,8 @@ import path from 'node:path';
 import next from 'next';
 import {
   assertRuntimeConfig,
+  chatImageCleanupHour,
+  chatImageCleanupTimeZone,
   host,
   port,
   rootDir,
@@ -24,6 +26,7 @@ import { handlePlanner } from './routes/planner.js';
 import { handleSecureConversations } from './routes/secure-conversations.js';
 import { handleStickers } from './routes/stickers.js';
 import { handleLocalUploadRequest, syncR2ImagesToLocal, cleanupOrphanedMomentImages } from './uploads.js';
+import { expireAllDueChatImages, scheduleDailyChatImageCleanup } from './chat-images.js';
 
 const dev = process.env.NODE_ENV !== 'production';
 const app = next({ dev });
@@ -110,6 +113,25 @@ if (orphanCleanup.orphaned.length) {
 } else {
   console.log('No orphaned moment images found');
 }
+
+async function runChatImageExpiry() {
+  try {
+    const result = await expireAllDueChatImages({ batchSize: 200 });
+    if (result.deleted) {
+      console.log(`Daily chat-image cleanup: deleted ${result.deleted} in ${result.batches} batch(es)`);
+    } else {
+      console.log('Daily chat-image cleanup: nothing due');
+    }
+  } catch (error) {
+    console.error('Chat image expiry failed:', error.message || error);
+  }
+}
+
+const chatImageCleanup = scheduleDailyChatImageCleanup(runChatImageExpiry);
+console.log(
+  `Chat-image cleanup scheduled daily at ${String(chatImageCleanupHour).padStart(2, '0')}:00 ${chatImageCleanupTimeZone} (next: ${chatImageCleanup.nextAt.toISOString()})`
+);
+
 await app.prepare();
 
 // Coolify / reverse proxies terminate TLS; the app should speak HTTP unless local certs exist.

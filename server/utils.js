@@ -45,7 +45,11 @@ export function stringifyJson(value) {
 export function messagePreview(message) {
   if (!message) return '';
   if (message.recalledAt) return '消息已撤回';
-  return message.kind === 'sticker' ? '[表情包]' : message.text;
+  if (message.kind === 'sticker') return '[表情包]';
+  if (message.kind === 'image') {
+    return message.imageDeletedAt || message.imageExpired ? '[图片已过期删除]' : '[图片]';
+  }
+  return message.text;
 }
 
 export function isImageDataUrl(value) {
