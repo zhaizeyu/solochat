@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { adminUsername, bubbleThemes, databaseUrl, initialAdminPassword } from './config.js';
+import { adminUsername, databaseUrl, initialAdminPassword, normalizeBubbleTheme, normalizeChatBgPreset } from './config.js';
 import { storedImageUrlForClient } from './uploads.js';
 import { conversationKey, hashPassword, parseJson } from './utils.js';
 
@@ -52,6 +52,8 @@ export function rowToUser(row) {
     avatarDataUrl: row.avatarPath || '',
     avatarPath: row.avatarPath || null,
     bubbleTheme: row.bubbleTheme || 'mint',
+    chatBgPreset: row.chatBgPreset || 'soft',
+    chatBgPath: row.chatBgPath || null,
     bio: row.bio || '',
     createdAt: row.createdAt,
     disabledAt: row.disabledAt || null,
@@ -131,6 +133,8 @@ export function userSelect(prefix = '') {
     ${prefix}password_hash AS "passwordHash",
     ${prefix}avatar_path AS "avatarPath",
     ${prefix}bubble_theme AS "bubbleTheme",
+    ${prefix}chat_bg_preset AS "chatBgPreset",
+    ${prefix}chat_bg_path AS "chatBgPath",
     ${prefix}bio AS bio,
     ${prefix}created_at AS "createdAt",
     ${prefix}disabled_at AS "disabledAt",
@@ -198,7 +202,9 @@ export function sanitizeUser(user) {
     username: user.username,
     displayName: user.displayName,
     avatarDataUrl: storedImageUrlForClient(user.avatarDataUrl || ''),
-    bubbleTheme: bubbleThemes.has(user.bubbleTheme) ? user.bubbleTheme : 'mint',
+    bubbleTheme: normalizeBubbleTheme(user.bubbleTheme),
+    chatBgPreset: normalizeChatBgPreset(user.chatBgPreset),
+    chatBgDataUrl: storedImageUrlForClient(user.chatBgPath || user.chatBgDataUrl || ''),
     bio: user.bio || '',
     createdAt: user.createdAt,
     disabledAt: user.disabledAt || null,
@@ -494,6 +500,8 @@ async function createSchema() {
       ON couple_moments(conversation_id, created_at DESC);
   `);
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT \'\'');
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_bg_preset TEXT NOT NULL DEFAULT \'soft\'');
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_bg_path TEXT');
   await query('ALTER TABLE secure_conversations ADD COLUMN IF NOT EXISTS close_requested_by TEXT');
   await query('ALTER TABLE secure_conversations ADD COLUMN IF NOT EXISTS close_requested_at TEXT');
 }

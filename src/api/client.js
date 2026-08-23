@@ -203,6 +203,18 @@ const api = {
       body: JSON.stringify({ bubbleTheme })
     });
   },
+  updateChatBgPreset(chatBgPreset) {
+    return this.request('/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ chatBgPreset })
+    });
+  },
+  updateChatBgImage(chatBgDataUrl) {
+    return this.request('/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ chatBgDataUrl })
+    });
+  },
   stickers() {
     return this.request('/api/stickers');
   },

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Input } from '../../components/ui/input.jsx';
 import { Textarea } from '../../components/ui/textarea.jsx';
 import { Avatar } from './Avatar.jsx';
+import { AppearancePanel } from './AppearancePanel.jsx';
 import { Button } from '../lib/ui.jsx';
 import { readImageFile } from '../lib/media.js';
 
@@ -15,8 +16,12 @@ function ContactList({
   onDeleteContact,
   self,
   bubbleTheme,
-  bubblePresets,
+  chatBgPreset,
+  chatBgDataUrl,
   onBubbleThemeChange,
+  onChatBgPresetChange,
+  onChatBgUpload,
+  onChatBgClear,
   onUpdateProfile,
   onUpdateBio,
   onUpdateAvatar,
@@ -30,6 +35,7 @@ function ContactList({
   const [deletingId, setDeletingId] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [editingBio, setEditingBio] = useState(false);
+  const [appearanceOpen, setAppearanceOpen] = useState(false);
   const [displayName, setDisplayName] = useState(self.displayName);
   const [bio, setBio] = useState(self.bio || '');
   const [profileError, setProfileError] = useState('');
@@ -42,8 +48,6 @@ function ContactList({
   useEffect(() => {
     setBio(self.bio || '');
   }, [self.bio]);
-
-  const selectedBubblePreset = bubblePresets.find((preset) => preset.id === bubbleTheme) || bubblePresets[0];
 
   async function add(event) {
     event.preventDefault();
@@ -161,19 +165,6 @@ function ContactList({
     }
   }
 
-  async function changeBubbleTheme(themeId) {
-    if (themeId === bubbleTheme) return;
-    setProfileBusy(true);
-    setProfileError('');
-    try {
-      await onBubbleThemeChange(themeId);
-    } catch (err) {
-      setProfileError(err.message);
-    } finally {
-      setProfileBusy(false);
-    }
-  }
-
   return (
     <aside className="sidebar">
       <div className="profile-row">
@@ -220,6 +211,7 @@ function ContactList({
           </button>
         )}
         <button type="button" onClick={() => setEditingName(true)}>改昵称</button>
+        <button type="button" onClick={() => setAppearanceOpen(true)}>外观</button>
         <button type="button" onClick={changePassword} disabled={profileBusy}>改密码</button>
         <button type="button" onClick={onLogout}>退出</button>
         <button type="button" className="danger-link" onClick={confirmDeleteAccount} disabled={profileBusy}>
@@ -249,49 +241,6 @@ function ContactList({
         )}
       </section>
       {profileError && <div className="inline-error">{profileError}</div>}
-
-      <section
-        className="bubble-theme-picker"
-        aria-label="气泡颜色"
-        style={{
-          '--bubble-start': selectedBubblePreset.start,
-          '--bubble-end': selectedBubblePreset.end,
-          '--bubble-soft': selectedBubblePreset.soft,
-          '--bubble-shadow': selectedBubblePreset.shadow
-        }}
-      >
-        <div className="contact-title">气泡颜色</div>
-        <div className="bubble-theme-grid">
-          {bubblePresets.map((preset) => (
-            <button
-              key={preset.id}
-              type="button"
-              className={bubbleTheme === preset.id ? 'selected' : ''}
-              onClick={() => changeBubbleTheme(preset.id)}
-              disabled={profileBusy}
-              title={preset.name}
-              aria-label={preset.name}
-              aria-pressed={bubbleTheme === preset.id}
-              style={{
-                '--swatch-start': preset.start,
-                '--swatch-end': preset.end,
-                '--swatch-soft': preset.soft
-              }}
-            >
-              <span />
-            </button>
-          ))}
-        </div>
-        <div
-          className="bubble-theme-preview"
-          style={{
-            background: `linear-gradient(135deg, ${selectedBubblePreset.start}, ${selectedBubblePreset.end})`,
-            boxShadow: `0 10px 26px ${selectedBubblePreset.shadow}`
-          }}
-        >
-          {selectedBubblePreset.name}气泡预览
-        </div>
-      </section>
 
       <form className="add-contact" onSubmit={add}>
         <Input
@@ -336,9 +285,20 @@ function ContactList({
           </div>
         ))}
       </div>
+
+      <AppearancePanel
+        open={appearanceOpen}
+        onClose={() => setAppearanceOpen(false)}
+        bubbleTheme={bubbleTheme}
+        chatBgPreset={chatBgPreset}
+        chatBgDataUrl={chatBgDataUrl}
+        onBubbleThemeChange={onBubbleThemeChange}
+        onChatBgPresetChange={onChatBgPresetChange}
+        onChatBgUpload={onChatBgUpload}
+        onChatBgClear={onChatBgClear}
+      />
     </aside>
   );
 }
-
 
 export { ContactList };

@@ -21,7 +21,7 @@ import {
   wrapRootKey
 } from './secure-crypto.js';
 import { api } from './api/client.js';
-import { bubblePresets, messagePageSize, useMobileShell } from './lib/ui.jsx';
+import { messagePageSize, useMobileShell } from './lib/ui.jsx';
 import { AuthPanel } from './components/AuthPanel.jsx';
 import { AdminPanel } from './components/AdminPanel.jsx';
 import { ContactList } from './components/ContactList.jsx';
@@ -960,7 +960,8 @@ export default function App() {
         onSelect={selectContact}
         self={user}
         bubbleTheme={user.bubbleTheme || 'mint'}
-        bubblePresets={bubblePresets}
+        chatBgPreset={user.chatBgPreset || 'soft'}
+        chatBgDataUrl={user.chatBgDataUrl || ''}
         onBubbleThemeChange={async (bubbleTheme) => {
           const previousUser = user;
           setUser((current) => (current ? { ...current, bubbleTheme } : current));
@@ -968,6 +969,39 @@ export default function App() {
             const data = await api.updateBubbleTheme(bubbleTheme);
             setUser(data.user);
             await refreshContacts();
+          } catch (err) {
+            setUser(previousUser);
+            throw err;
+          }
+        }}
+        onChatBgPresetChange={async (chatBgPreset) => {
+          const previousUser = user;
+          setUser((current) => (current ? { ...current, chatBgPreset, chatBgDataUrl: '' } : current));
+          try {
+            const data = await api.updateChatBgPreset(chatBgPreset);
+            setUser(data.user);
+          } catch (err) {
+            setUser(previousUser);
+            throw err;
+          }
+        }}
+        onChatBgUpload={async (chatBgDataUrl) => {
+          const previousUser = user;
+          setUser((current) => (current ? { ...current, chatBgDataUrl } : current));
+          try {
+            const data = await api.updateChatBgImage(chatBgDataUrl);
+            setUser(data.user);
+          } catch (err) {
+            setUser(previousUser);
+            throw err;
+          }
+        }}
+        onChatBgClear={async () => {
+          const previousUser = user;
+          setUser((current) => (current ? { ...current, chatBgDataUrl: '' } : current));
+          try {
+            const data = await api.updateChatBgImage('');
+            setUser(data.user);
           } catch (err) {
             setUser(previousUser);
             throw err;
@@ -1039,7 +1073,8 @@ export default function App() {
           messages={messages}
           self={user}
           stickers={stickers}
-          bubblePresets={bubblePresets}
+          chatBgPreset={user.chatBgPreset || 'soft'}
+          chatBgDataUrl={user.chatBgDataUrl || ''}
           hasOlderMessages={hasOlderMessages}
           loadingOlderMessages={loadingOlderMessages}
           onLoadOlderMessages={() => loadOlderMessages(selected.id).catch(console.error)}

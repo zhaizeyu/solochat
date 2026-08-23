@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api/client.js';
 import { Textarea } from '../../components/ui/textarea.jsx';
-import { Button, emojiGroups } from '../lib/ui.jsx';
+import { Button, emojiGroups, resolveBubbleTheme, resolveChatBg } from '../lib/ui.jsx';
 import { readImageFile } from '../lib/media.js';
 import { Avatar } from './Avatar.jsx';
 import { Twemoji, renderTwemojiText } from './Twemoji.jsx';
@@ -16,7 +16,8 @@ function ChatWindow({
   messages,
   self,
   stickers,
-  bubblePresets,
+  chatBgPreset = 'soft',
+  chatBgDataUrl = '',
   hasOlderMessages,
   loadingOlderMessages,
   onLoadOlderMessages,
@@ -333,7 +334,7 @@ function ChatWindow({
   }
 
   function getBubblePreset(themeId) {
-    return bubblePresets.find((preset) => preset.id === themeId) || bubblePresets[0];
+    return resolveBubbleTheme(themeId);
   }
 
   function getMessageBubbleStyle(preset, transparent = false) {
@@ -524,10 +525,23 @@ function ChatWindow({
 
   const secureBannerVisible = Boolean(secureStatusLabel) && sideTool !== 'secure' && mobilePane !== 'secure';
   const secureActive = secureChat?.status === 'enabled' || secureChat?.status === 'closing' || secureChat?.status === 'waiting_peer';
+  const chatBackground = resolveChatBg(chatBgPreset, chatBgDataUrl);
+  const chatPanelStyle = chatBackground.imageUrl
+    ? {
+        backgroundColor: '#eaf8f5',
+        backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.42), rgba(255,255,255,0.55)), url(${chatBackground.imageUrl})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }
+    : {
+        backgroundImage: 'none',
+        background: chatBackground.css
+      };
 
 
   return (
-    <section className={`chat-panel ${sideTool ? 'planner-open' : ''}`}>
+    <section className={`chat-panel ${sideTool ? 'planner-open' : ''}`} style={chatPanelStyle}>
       <div className={`chat-core ${mobilePane !== 'chat' ? 'mobile-planner-active' : ''} ${secureBannerVisible ? 'has-secure-banner' : ''}`}>
         <header className="chat-header">
           <button type="button" className="mobile-back-button" onClick={onBack} aria-label="返回联系人">

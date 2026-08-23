@@ -15,6 +15,96 @@ const bubblePresets = [
   { id: 'lavender', name: '薰衣草', start: '#a18cd1', end: '#fbc2eb', soft: '#f8f0ff', shadow: 'rgba(161, 140, 209, 0.2)' }
 ];
 
+const chatBgPresets = [
+  {
+    id: 'soft',
+    name: '清新',
+    css: 'linear-gradient(180deg, rgba(234, 248, 245, 0.92), rgba(251, 248, 244, 0.94))'
+  },
+  {
+    id: 'paper',
+    name: '纸感',
+    css: 'linear-gradient(180deg, #f7f3ea 0%, #efe7d8 100%)'
+  },
+  {
+    id: 'dusk',
+    name: '暮色',
+    css: 'linear-gradient(180deg, #ece7f4 0%, #f4ebe4 100%)'
+  },
+  {
+    id: 'ocean',
+    name: '海蓝',
+    css: 'linear-gradient(180deg, #e4f2fb 0%, #eaf6f2 100%)'
+  },
+  {
+    id: 'plain',
+    name: '素白',
+    css: '#f5f5f4'
+  }
+];
+
+function clampByte(value) {
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function hexToRgb(hex) {
+  const value = String(hex || '').replace('#', '');
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) return null;
+  return {
+    r: Number.parseInt(value.slice(0, 2), 16),
+    g: Number.parseInt(value.slice(2, 4), 16),
+    b: Number.parseInt(value.slice(4, 6), 16)
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map((part) => clampByte(part).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function mixRgb(a, b, amount) {
+  return {
+    r: a.r + (b.r - a.r) * amount,
+    g: a.g + (b.g - a.g) * amount,
+    b: a.b + (b.b - a.b) * amount
+  };
+}
+
+function bubbleThemeFromDye(hex) {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return bubblePresets[0];
+  const end = mixRgb(rgb, { r: 255, g: 255, b: 255 }, 0.28);
+  const soft = mixRgb(rgb, { r: 255, g: 255, b: 255 }, 0.88);
+  const startHex = rgbToHex(rgb).toLowerCase();
+  return {
+    id: `dye:${startHex}`,
+    name: '自定义染色',
+    start: startHex,
+    end: rgbToHex(end),
+    soft: rgbToHex(soft),
+    shadow: `rgba(${clampByte(rgb.r)}, ${clampByte(rgb.g)}, ${clampByte(rgb.b)}, 0.2)`,
+    dye: startHex
+  };
+}
+
+function resolveBubbleTheme(themeId) {
+  const value = String(themeId || '').trim();
+  if (value.startsWith('dye:')) {
+    return bubbleThemeFromDye(value.slice(4));
+  }
+  return bubblePresets.find((preset) => preset.id === value) || bubblePresets[0];
+}
+
+function resolveChatBg(presetId, imageUrl = '') {
+  if (imageUrl) {
+    return {
+      id: 'custom',
+      name: '自定义图片',
+      imageUrl,
+      css: null
+    };
+  }
+  return chatBgPresets.find((preset) => preset.id === presetId) || chatBgPresets[0];
+}
 const emojiGroups = [
   {
     id: 'smileys',
@@ -136,6 +226,10 @@ function SegmentedControl({ options, value, onChange, className = '', ariaLabel 
 
 export {
   bubblePresets,
+  chatBgPresets,
+  resolveBubbleTheme,
+  resolveChatBg,
+  bubbleThemeFromDye,
   emojiGroups,
   messagePageSize,
   cls,

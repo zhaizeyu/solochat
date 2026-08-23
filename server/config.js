@@ -75,8 +75,28 @@ export const useHttps = String(process.env.USE_HTTPS || 'false').toLowerCase() =
 export const recallWindowMs = 8 * 60 * 1000;
 export const maxImageDataUrlLength = 4_300_000;
 export const bubbleThemes = new Set(['mint', 'pink', 'purple', 'sky', 'peach', 'lavender']);
+export const chatBgPresets = new Set(['soft', 'paper', 'dusk', 'ocean', 'plain']);
 export const adminUsername = 'admin';
 export const initialAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
+
+const dyeThemePattern = /^dye:#[0-9a-fA-F]{6}$/;
+
+export function normalizeBubbleTheme(value, fallback = 'mint') {
+  const theme = String(value || '').trim();
+  if (bubbleThemes.has(theme)) return theme;
+  if (dyeThemePattern.test(theme)) return `dye:${theme.slice(4).toLowerCase()}`;
+  return fallback;
+}
+
+export function isValidBubbleTheme(value) {
+  const theme = String(value || '').trim();
+  return bubbleThemes.has(theme) || dyeThemePattern.test(theme);
+}
+
+export function normalizeChatBgPreset(value, fallback = 'soft') {
+  const preset = String(value || '').trim();
+  return chatBgPresets.has(preset) ? preset : fallback;
+}
 
 function validateDatabaseUrl(value) {
   let url;

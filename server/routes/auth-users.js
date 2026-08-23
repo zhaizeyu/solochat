@@ -1,5 +1,10 @@
 import crypto from 'node:crypto';
-import { bubbleThemes, maxImageDataUrlLength } from '../config.js';
+import {
+  isValidBubbleTheme,
+  maxImageDataUrlLength,
+  normalizeBubbleTheme,
+  normalizeChatBgPreset
+} from '../config.js';
 import {
   disableUserAccount,
   execTransaction,
@@ -9,8 +14,8 @@ import {
   sanitizeUser
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
-import { saveImageDataUrl } from '../uploads.js';
 import { hashPassword, isImageDataUrl, normalizeName, verifyPassword } from '../utils.js';
+import { deleteStoredImage, saveImageDataUrl } from '../uploads.js';
 import { applyLoginPasswordRewraps } from './secure-conversations.js';
 
 export async function handlePublicAuth(req, res, pathName) {
@@ -115,10 +120,34 @@ export async function handleCurrentUser(req, res, pathName, user) {
     }
     if (Object.hasOwn(body, 'bubbleTheme')) {
       const bubbleTheme = String(body.bubbleTheme || '');
-      if (!bubbleThemes.has(bubbleTheme)) {
+      if (!isValidBubbleTheme(bubbleTheme)) {
         return json(res, 400, { message: '气泡颜色无效' });
       }
-      updates.bubbleTheme = bubbleTheme;
+      updates.bubbleTheme = normalizeBubbleTheme(bubbleTheme);
+    }
+    if (Object.hasOwn(body, 'chatBgPreset')) {
+      const chatBgPreset = String(body.chatBgPreset || '');
+      const normalized = normalizeChatBgPreset(chatBgPreset, '');
+      if (!normalized) {
+        return json(res, 400, { message: '聊天背景无效' });
+      }
+      updates.chatBgPreset = normalized;
+      // Selecting a preset clears custom wallpaper.
+      updates.chatBgPath = null;
+      updates.clearChatBgImage = true;
+    }
+    if (Object.hasOwn(body, 'chatBgDataUrl')) {
+      const chatBgDataUrl = String(body.chatBgDataUrl || '');
+      if (chatBgDataUrl && (!isImageDataUrl(chatBgDataUrl) || chatBgDataUrl.length > maxImageDataUrlLength)) {
+        return json(res, 400, { message: '背景图需为 700KB 以内的图片' });
+      }
+      updates.chatBgPath = chatBgDataUrl
+        ? await saveImageDataUrl(chatBgDataUrl, 'chat-bgs', user.id)
+        : null;
+      updates.clearChatBgImage = !chatBgDataUrl;
+      if (chatBgDataUrl) {
+        updates.chatBgPreset = 'soft';
+      }
     }
     if (Object.hasOwn(body, 'bio')) {
       const bio = String(body.bio || '').trim();
@@ -135,6 +164,18 @@ export async function handleCurrentUser(req, res, pathName, user) {
     }
     if (Object.hasOwn(updates, 'bubbleTheme')) {
       await db.prepare('UPDATE users SET bubble_theme = ? WHERE id = ?').run(updates.bubbleTheme, user.id);
+    }
+    if (Object.hasOwn(updates, 'chatBgPreset') || Object.hasOwn(updates, 'chatBgPath') || updates.clearChatBgImage) {
+      const previousBg = user.chatBgPath || null;
+      if (Object.hasOwn(updates, 'chatBgPreset')) {
+        await db.prepare('UPDATE users SET chat_bg_preset = ? WHERE id = ?').run(updates.chatBgPreset, user.id);
+      }
+      if (Object.hasOwn(updates, 'chatBgPath') || updates.clearChatBgImage) {
+        await db.prepare('UPDATE users SET chat_bg_path = ? WHERE id = ?').run(updates.chatBgPath || null, user.id);
+      }
+      if (previousBg && previousBg !== updates.chatBgPath) {
+        await deleteStoredImage(previousBg).catch(() => {});
+      }
     }
     if (Object.hasOwn(updates, 'bio')) {
       await db.prepare('UPDATE users SET bio = ? WHERE id = ?').run(updates.bio, user.id);
