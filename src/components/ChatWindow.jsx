@@ -54,6 +54,8 @@ function ChatWindow({
   const [mobilePane, setMobilePane] = useState('chat');
   const [plannerTasks, setPlannerTasks] = useState([]);
   const [moments, setMoments] = useState([]);
+  const [plannerLoaded, setPlannerLoaded] = useState(false);
+  const [momentsLoaded, setMomentsLoaded] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const [imageProgress, setImageProgress] = useState(0);
   const [lightboxUrl, setLightboxUrl] = useState('');
@@ -98,6 +100,10 @@ function ChatWindow({
     setProfileOpen(false);
     setMobilePane('chat');
     setSideTool(null);
+    setPlannerTasks([]);
+    setMoments([]);
+    setPlannerLoaded(false);
+    setMomentsLoaded(false);
   }, [contact?.id]);
 
   useEffect(() => {
@@ -112,44 +118,6 @@ function ChatWindow({
     setStickerOpen(false);
   }, [contact?.id]);
 
-  useEffect(() => {
-    if (!contact || !self) {
-      setPlannerTasks([]);
-      return;
-    }
-    let active = true;
-    setPlannerTasks([]);
-    api.plannerTasks(contact.id)
-      .then((data) => {
-        if (active) setPlannerTasks(data.tasks);
-      })
-      .catch((err) => {
-        if (active) alert(err.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [contact?.id, self?.id]);
-
-  useEffect(() => {
-    if (!contact || !self) {
-      setMoments([]);
-      return;
-    }
-    let active = true;
-    setMoments([]);
-    api.moments(contact.id)
-      .then((data) => {
-        if (active) setMoments(data.moments);
-      })
-      .catch((err) => {
-        if (active) alert(err.message);
-      });
-    return () => {
-      active = false;
-    };
-  }, [contact?.id, self?.id]);
-
   function replacePlannerTask(task) {
     setPlannerTasks((current) => current.map((item) => (item.id === task.id ? task : item)));
   }
@@ -159,6 +127,7 @@ function ChatWindow({
     try {
       const data = await api.addPlannerTask(contact.id, task);
       setPlannerTasks((current) => [data.task, ...current.filter((item) => item.id !== data.task.id)]);
+      setPlannerLoaded(true);
       setSideTool('planner');
       setMobilePane('planner');
     } catch (err) {
@@ -193,11 +162,13 @@ function ChatWindow({
   async function reloadPlannerTasks() {
     if (!contact || !self) {
       setPlannerTasks([]);
+      setPlannerLoaded(false);
       return;
     }
     try {
       const data = await api.plannerTasks(contact.id);
       setPlannerTasks(data.tasks);
+      setPlannerLoaded(true);
     } catch (err) {
       alert(err.message);
     }
@@ -206,11 +177,13 @@ function ChatWindow({
   async function reloadMoments() {
     if (!contact || !self) {
       setMoments([]);
+      setMomentsLoaded(false);
       return;
     }
     try {
       const data = await api.moments(contact.id);
       setMoments(data.moments);
+      setMomentsLoaded(true);
     } catch (err) {
       alert(err.message);
     }
@@ -220,6 +193,7 @@ function ChatWindow({
     if (!contact) return;
     const data = await api.addMoment(contact.id, payload);
     setMoments(data.moments);
+    setMomentsLoaded(true);
     setSideTool('moments');
     setMobilePane('moments');
   }
@@ -613,7 +587,7 @@ function ChatWindow({
               setMobilePane('planner');
             }}
           >
-            待办 {activePlannerCount}
+            待办{plannerLoaded ? ` ${activePlannerCount}` : ''}
           </button>
           <button
             type="button"
@@ -627,7 +601,7 @@ function ChatWindow({
               setMobilePane('moments');
             }}
           >
-            回忆 {moments.length}
+            回忆{momentsLoaded ? ` ${moments.length}` : ''}
           </button>
           <button
             type="button"
@@ -690,7 +664,7 @@ function ChatWindow({
               setMobilePane('planner');
             }}
           >
-            待办 {activePlannerCount}
+            待办{plannerLoaded ? ` ${activePlannerCount}` : ''}
           </button>
           <button
             type="button"
@@ -701,7 +675,7 @@ function ChatWindow({
               setMobilePane('moments');
             }}
           >
-            回忆 {moments.length}
+            回忆{momentsLoaded ? ` ${moments.length}` : ''}
           </button>
           <button
             type="button"

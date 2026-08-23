@@ -186,11 +186,12 @@ export default function App() {
   }
 
   async function fetchMergedMessages(contactId, params = {}, material = secureMaterialRef.current) {
-    const plain = await api.messages(contactId, { ...params, limit: messagePageSize });
-    let encrypted = { messages: [], hasMore: false };
-    if (shouldLoadEncryptedMessages(material)) {
-      encrypted = await api.encryptedMessages(contactId, { ...params, limit: messagePageSize });
-    }
+    const needEncrypted = shouldLoadEncryptedMessages(material);
+    const plainPromise = api.messages(contactId, { ...params, limit: messagePageSize });
+    const encryptedPromise = needEncrypted
+      ? api.encryptedMessages(contactId, { ...params, limit: messagePageSize })
+      : Promise.resolve({ messages: [], hasMore: false });
+    const [plain, encrypted] = await Promise.all([plainPromise, encryptedPromise]);
     const decrypted = await decryptEncryptedMessages(encrypted.messages);
     return {
       messages: mergeMessages(plain.messages, decrypted),
@@ -200,10 +201,17 @@ export default function App() {
 
   async function loadLatestMessages(contactId = selectedId) {
     if (!contactId) return;
-    const material = await loadSecureMaterial(contactId);
-    const merged = await fetchMergedMessages(contactId, {}, material);
-    setMessages(merged.messages);
-    setHasOlderMessages(merged.hasMore);
+    // Start plain messages immediately; secure material decides if encrypted history is needed.
+    const materialPromise = loadSecureMaterial(contactId);
+    const plainPromise = api.messages(contactId, { limit: messagePageSize });
+    const material = await materialPromise;
+    const encryptedPromise = shouldLoadEncryptedMessages(material)
+      ? api.encryptedMessages(contactId, { limit: messagePageSize })
+      : Promise.resolve({ messages: [], hasMore: false });
+    const [plain, encrypted] = await Promise.all([plainPromise, encryptedPromise]);
+    const decrypted = await decryptEncryptedMessages(encrypted.messages);
+    setMessages(mergeMessages(plain.messages, decrypted));
+    setHasOlderMessages(Boolean(plain.hasMore || encrypted.hasMore));
   }
 
   async function refreshNewMessages(contactId = selectedId) {
@@ -215,12 +223,13 @@ export default function App() {
     }
     const newest = current.at(-1);
     const material = secureMaterialRef.current;
-    const plain = await api.messages(contactId, { after: newest.createdAt, limit: messagePageSize });
-    let encryptedMessages = [];
-    if (shouldLoadEncryptedMessages(material)) {
-      const encrypted = await api.encryptedMessages(contactId, { after: newest.createdAt, limit: messagePageSize });
-      encryptedMessages = await decryptEncryptedMessages(encrypted.messages);
-    }
+    const needEncrypted = shouldLoadEncryptedMessages(material);
+    const plainPromise = api.messages(contactId, { after: newest.createdAt, limit: messagePageSize });
+    const encryptedPromise = needEncrypted
+      ? api.encryptedMessages(contactId, { after: newest.createdAt, limit: messagePageSize })
+      : Promise.resolve({ messages: [] });
+    const [plain, encrypted] = await Promise.all([plainPromise, encryptedPromise]);
+    const encryptedMessages = await decryptEncryptedMessages(encrypted.messages || []);
     if (plain.messages.length > 0 || encryptedMessages.length > 0) {
       setMessages((items) => mergeMessages(items, [...plain.messages, ...encryptedMessages]));
       return;
@@ -981,7 +990,6 @@ export default function App() {
       setHasOlderMessages(false);
       return;
     }
-    loadSecureMaterial(selectedId).catch(console.error);
     setMessages([]);
     setHasOlderMessages(false);
     loadLatestMessages(selectedId).catch(console.error);
@@ -995,7 +1003,7 @@ export default function App() {
       clearInterval(timer);
       clearInterval(secureTimer);
     };
-  }, [selectedId, secureChat.status]);
+  }, [selectedId]);
 
   useEffect(() => {
     if (!user || !selectedId || !pageVisible) return;
