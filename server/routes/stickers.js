@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { maxImageDataUrlLength } from '../config.js';
 import { getDb, getStickerByIdForOwner, rowToSticker, sanitizeSticker, stickerSelect } from '../db.js';
 import { json, readBody } from '../http-utils.js';
-import { isStoredImageUrl, r2PublicUrlForStoredImage, saveImageDataUrl } from '../uploads.js';
+import { deleteStoredImage, isStoredImageUrl, r2PublicUrlForStoredImage, saveImageDataUrl } from '../uploads.js';
 import { isImageDataUrl, normalizeName } from '../utils.js';
 
 export async function handleStickers(req, res, pathName, user) {
@@ -47,7 +47,18 @@ export async function handleStickers(req, res, pathName, user) {
     if (!sticker) {
       return json(res, 404, { message: '表情包不存在' });
     }
+    const imagePath = sticker.imagePath || sticker.imageDataUrl || '';
     await db.prepare('DELETE FROM stickers WHERE id = ? AND owner_id = ?').run(sticker.id, user.id);
+    if (imagePath) {
+      const stillUsed = await db.prepare(`
+        SELECT COUNT(*)::int AS count
+        FROM stickers
+        WHERE image_path = ?
+      `).get(imagePath);
+      if (!stillUsed?.count) {
+        await deleteStoredImage(imagePath).catch(() => {});
+      }
+    }
     return json(res, 200, { ok: true });
   }
 
