@@ -86,28 +86,86 @@ export const chatImageCleanupHour = Math.min(
 /** IANA timezone for the daily cleanup clock. Default Asia/Shanghai. */
 export const chatImageCleanupTimeZone = process.env.CHAT_IMAGE_CLEANUP_TZ || 'Asia/Shanghai';
 export const chatImageUploadHourlyLimit = 60;
-export const bubbleThemes = new Set(['mint', 'pink', 'purple', 'sky', 'peach', 'lavender']);
-export const chatBgPresets = new Set(['soft', 'paper', 'dusk', 'ocean', 'plain']);
+export const bubbleThemes = new Set(['mint', 'blush', 'ocean', 'sand', 'dark']);
+export const chatBgPresets = new Set(['mint', 'blush', 'ocean', 'sand', 'dark']);
+export const uiThemes = new Set(['mint', 'blush', 'ocean', 'sand', 'dark']);
 export const adminUsername = 'admin';
 export const initialAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
 const dyeThemePattern = /^dye:#[0-9a-fA-F]{6}$/;
+const legacyStyleMap = {
+  rose: 'blush',
+  violet: 'blush',
+  pink: 'blush',
+  purple: 'blush',
+  peach: 'blush',
+  lavender: 'blush',
+  azure: 'ocean',
+  sky: 'ocean',
+  amber: 'sand',
+  paper: 'sand',
+  soft: 'mint',
+  plain: 'mint',
+  dusk: 'blush',
+  slate: 'dark'
+};
+
+function mapDyeToStyleId(hex, fallback = 'mint') {
+  const r = Number.parseInt(hex.slice(0, 2), 16) / 255;
+  const g = Number.parseInt(hex.slice(2, 4), 16) / 255;
+  const b = Number.parseInt(hex.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  if (luminance < 0.28) return 'dark';
+  const chroma = max - min;
+  if (chroma < 0.08) return fallback;
+  let hue = 0;
+  if (max === r) hue = ((g - b) / chroma) % 6;
+  else if (max === g) hue = (b - r) / chroma + 2;
+  else hue = (r - g) / chroma + 4;
+  hue *= 60;
+  if (hue < 0) hue += 360;
+  if (hue < 25 || hue >= 330) return 'blush';
+  if (hue < 80) return 'sand';
+  if (hue < 170) return 'mint';
+  return 'ocean';
+}
+
+function normalizeStyleId(value, fallback = 'mint') {
+  let theme = String(value || '').trim();
+  if (legacyStyleMap[theme]) theme = legacyStyleMap[theme];
+  if (dyeThemePattern.test(theme)) {
+    return mapDyeToStyleId(theme.slice(5).toLowerCase(), fallback);
+  }
+  if (bubbleThemes.has(theme) || uiThemes.has(theme) || chatBgPresets.has(theme)) return theme;
+  return fallback;
+}
 
 export function normalizeBubbleTheme(value, fallback = 'mint') {
-  const theme = String(value || '').trim();
-  if (bubbleThemes.has(theme)) return theme;
-  if (dyeThemePattern.test(theme)) return `dye:${theme.slice(4).toLowerCase()}`;
-  return fallback;
+  return normalizeStyleId(value, fallback);
 }
 
 export function isValidBubbleTheme(value) {
   const theme = String(value || '').trim();
-  return bubbleThemes.has(theme) || dyeThemePattern.test(theme);
+  if (legacyStyleMap[theme]) return true;
+  if (dyeThemePattern.test(theme)) return true;
+  return bubbleThemes.has(theme);
 }
 
-export function normalizeChatBgPreset(value, fallback = 'soft') {
-  const preset = String(value || '').trim();
-  return chatBgPresets.has(preset) ? preset : fallback;
+export function normalizeUiTheme(value, fallback = 'mint') {
+  return normalizeStyleId(value, fallback);
+}
+
+export function isValidUiTheme(value) {
+  const theme = String(value || '').trim();
+  if (legacyStyleMap[theme]) return true;
+  if (dyeThemePattern.test(theme)) return true;
+  return uiThemes.has(theme);
+}
+
+export function normalizeChatBgPreset(value, fallback = 'mint') {
+  return normalizeStyleId(value, fallback);
 }
 
 function validateDatabaseUrl(value) {

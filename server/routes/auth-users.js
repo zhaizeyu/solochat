@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
 import {
   isValidBubbleTheme,
+  isValidUiTheme,
   maxImageDataUrlLength,
   normalizeBubbleTheme,
-  normalizeChatBgPreset
+  normalizeChatBgPreset,
+  normalizeUiTheme
 } from '../config.js';
 import {
   disableUserAccount,
@@ -44,6 +46,7 @@ export async function handlePublicAuth(req, res, pathName) {
       passwordHash: hashPassword(password),
       avatarDataUrl: '',
       bubbleTheme: 'mint',
+      uiTheme: 'mint',
       bio: '',
       createdAt: new Date().toISOString(),
       disabledAt: null,
@@ -54,8 +57,8 @@ export async function handlePublicAuth(req, res, pathName) {
       await db.prepare(`
         INSERT INTO users (
           id, username, display_name, password_hash, avatar_path, bubble_theme,
-          bio, created_at, disabled_at, deleted_username, is_admin
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ui_theme, bio, created_at, disabled_at, deleted_username, is_admin
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         user.id,
         user.username,
@@ -63,6 +66,7 @@ export async function handlePublicAuth(req, res, pathName) {
         user.passwordHash,
         null,
         user.bubbleTheme,
+        user.uiTheme,
         user.bio,
         user.createdAt,
         null,
@@ -125,6 +129,13 @@ export async function handleCurrentUser(req, res, pathName, user) {
       }
       updates.bubbleTheme = normalizeBubbleTheme(bubbleTheme);
     }
+    if (Object.hasOwn(body, 'uiTheme')) {
+      const uiTheme = String(body.uiTheme || '');
+      if (!isValidUiTheme(uiTheme)) {
+        return json(res, 400, { message: '界面主题无效' });
+      }
+      updates.uiTheme = normalizeUiTheme(uiTheme);
+    }
     if (Object.hasOwn(body, 'chatBgPreset')) {
       const chatBgPreset = String(body.chatBgPreset || '');
       const normalized = normalizeChatBgPreset(chatBgPreset, '');
@@ -146,7 +157,7 @@ export async function handleCurrentUser(req, res, pathName, user) {
         : null;
       updates.clearChatBgImage = !chatBgDataUrl;
       if (chatBgDataUrl) {
-        updates.chatBgPreset = 'soft';
+        updates.chatBgPreset = 'mint';
       }
     }
     if (Object.hasOwn(body, 'bio')) {
@@ -164,6 +175,9 @@ export async function handleCurrentUser(req, res, pathName, user) {
     }
     if (Object.hasOwn(updates, 'bubbleTheme')) {
       await db.prepare('UPDATE users SET bubble_theme = ? WHERE id = ?').run(updates.bubbleTheme, user.id);
+    }
+    if (Object.hasOwn(updates, 'uiTheme')) {
+      await db.prepare('UPDATE users SET ui_theme = ? WHERE id = ?').run(updates.uiTheme, user.id);
     }
     if (Object.hasOwn(updates, 'chatBgPreset') || Object.hasOwn(updates, 'chatBgPath') || updates.clearChatBgImage) {
       const previousBg = user.chatBgPath || null;

@@ -15,9 +15,11 @@ function ContactList({
   onAddContact,
   onDeleteContact,
   self,
+  uiTheme,
   bubbleTheme,
   chatBgPreset,
   chatBgDataUrl,
+  onUiThemeChange,
   onBubbleThemeChange,
   onChatBgPresetChange,
   onChatBgUpload,
@@ -289,9 +291,11 @@ function ContactList({
       <AppearancePanel
         open={appearanceOpen}
         onClose={() => setAppearanceOpen(false)}
+        uiTheme={uiTheme}
         bubbleTheme={bubbleTheme}
         chatBgPreset={chatBgPreset}
         chatBgDataUrl={chatBgDataUrl}
+        onUiThemeChange={onUiThemeChange}
         onBubbleThemeChange={onBubbleThemeChange}
         onChatBgPresetChange={onChatBgPresetChange}
         onChatBgUpload={onChatBgUpload}

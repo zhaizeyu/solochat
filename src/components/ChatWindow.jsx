@@ -16,7 +16,7 @@ function ChatWindow({
   messages,
   self,
   stickers,
-  chatBgPreset = 'soft',
+  chatBgPreset = 'mint',
   chatBgDataUrl = '',
   hasOlderMessages,
   loadingOlderMessages,

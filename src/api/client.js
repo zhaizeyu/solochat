@@ -209,6 +209,12 @@ const api = {
       body: JSON.stringify({ bubbleTheme })
     });
   },
+  updateUiTheme(uiTheme) {
+    return this.request('/api/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ uiTheme })
+    });
+  },
   updateChatBgPreset(chatBgPreset) {
     return this.request('/api/me', {
       method: 'PATCH',

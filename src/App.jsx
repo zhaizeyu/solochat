@@ -21,7 +21,7 @@ import {
   wrapRootKey
 } from './secure-crypto.js';
 import { api } from './api/client.js';
-import { messagePageSize, useMobileShell } from './lib/ui.jsx';
+import { applyUiThemeToDocument, clearUiThemeFromDocument, messagePageSize, useMobileShell } from './lib/ui.jsx';
 import { AuthPanel } from './components/AuthPanel.jsx';
 import { AdminPanel } from './components/AdminPanel.jsx';
 import { ContactList } from './components/ContactList.jsx';
@@ -72,6 +72,7 @@ export default function App() {
   function clearSession() {
     localStorage.removeItem('doolulu.token');
     clearSecureRoots();
+    clearUiThemeFromDocument();
     secureMaterialRef.current = null;
     setSecureChat({ status: 'off', unlocked: false });
     setUser(null);
@@ -940,6 +941,14 @@ export default function App() {
   }
 
   useEffect(() => {
+    if (!user) {
+      clearUiThemeFromDocument();
+      return;
+    }
+    applyUiThemeToDocument(user.uiTheme || 'mint');
+  }, [user?.uiTheme, user?.id]);
+
+  useEffect(() => {
     const token = localStorage.getItem('doolulu.token');
     if (!token) {
       setLoading(false);
@@ -1056,9 +1065,23 @@ export default function App() {
         selectedId={selectedId}
         onSelect={selectContact}
         self={user}
+        uiTheme={user.uiTheme || 'mint'}
         bubbleTheme={user.bubbleTheme || 'mint'}
-        chatBgPreset={user.chatBgPreset || 'soft'}
+        chatBgPreset={user.chatBgPreset || 'mint'}
         chatBgDataUrl={user.chatBgDataUrl || ''}
+        onUiThemeChange={async (uiTheme) => {
+          const previousUser = user;
+          setUser((current) => (current ? { ...current, uiTheme } : current));
+          applyUiThemeToDocument(uiTheme);
+          try {
+            const data = await api.updateUiTheme(uiTheme);
+            setUser(data.user);
+          } catch (err) {
+            setUser(previousUser);
+            applyUiThemeToDocument(previousUser?.uiTheme || 'mint');
+            throw err;
+          }
+        }}
         onBubbleThemeChange={async (bubbleTheme) => {
           const previousUser = user;
           setUser((current) => (current ? { ...current, bubbleTheme } : current));
@@ -1170,7 +1193,7 @@ export default function App() {
           messages={messages}
           self={user}
           stickers={stickers}
-          chatBgPreset={user.chatBgPreset || 'soft'}
+          chatBgPreset={user.chatBgPreset || 'mint'}
           chatBgDataUrl={user.chatBgDataUrl || ''}
           hasOlderMessages={hasOlderMessages}
           loadingOlderMessages={loadingOlderMessages}

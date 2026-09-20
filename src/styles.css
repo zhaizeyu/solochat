@@ -14,9 +14,11 @@
   --accent: #12b886;
   --accent-blue: #1597ff;
   --accent-soft: #eaf8f5;
+  --accent-rgb: 18, 184, 134;
+  --accent-companion-rgb: 21, 151, 255;
   --success: #0f8f54;
   --danger: #c41c1c;
-  --focus: rgba(18, 184, 134, 0.18);
+  --focus: rgba(var(--accent-rgb), 0.18);
   --background: var(--surface);
   --foreground: var(--ink);
   --card: var(--surface);
@@ -44,17 +46,27 @@
   --bubble-start: #1597ff;
   --bubble-end: #12b886;
   --bubble-soft: #eaf8f5;
-  --bubble-shadow: rgba(18, 184, 134, 0.18);
-  --brand-gradient: linear-gradient(135deg, #1597ff 0%, #12b886 100%);
+  --bubble-shadow: rgba(var(--accent-rgb), 0.18);
+  --brand-gradient: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent) 100%);
   --love-gradient: linear-gradient(135deg, var(--bubble-start) 0%, var(--bubble-end) 100%);
+  --shell-gradient: linear-gradient(135deg, #eaf7f7 0%, #f7f2ec 100%);
+  --sidebar-wash: linear-gradient(180deg, rgba(var(--accent-rgb), 0.12), rgba(var(--accent-companion-rgb), 0.08) 42%, rgba(245, 241, 236, 0.72));
+  --chat-panel-wash: linear-gradient(180deg, rgba(234, 248, 245, 0.92), rgba(251, 248, 244, 0.94));
+  --composer-wash: linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.88));
   --shadow-soft: 0 18px 48px rgba(17, 17, 17, 0.08);
   --shadow-tight: 0 8px 24px rgba(17, 17, 17, 0.06);
-  --block-shadow: 0 10px 24px rgba(18, 184, 134, 0.1);
+  --block-shadow: 0 10px 24px rgba(var(--accent-rgb), 0.1);
   color: var(--ink);
   font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
   background: var(--canvas);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+}
+
+html[data-ui-mode="dark"] {
+  color-scheme: dark;
+  --shadow-soft: 0 18px 48px rgba(0, 0, 0, 0.45);
+  --shadow-tight: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 * {
@@ -257,14 +269,14 @@ textarea:focus {
   color: #ffffff;
   background: var(--brand-gradient);
   font-weight: 700;
-  box-shadow: 0 10px 24px rgba(18, 184, 134, 0.18);
+  box-shadow: 0 10px 24px rgba(var(--accent-rgb), 0.18);
   transition: filter 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
 }
 
 .primary-button:hover,
 .send-button:hover {
   filter: saturate(1.06) brightness(1.02);
-  box-shadow: 0 12px 28px rgba(21, 151, 255, 0.2);
+  box-shadow: 0 12px 28px rgba(var(--accent-companion-rgb), 0.2);
 }
 
 .primary-button {
@@ -304,7 +316,7 @@ textarea:focus {
   display: grid;
   grid-template-columns: 330px 1fr;
   grid-template-rows: minmax(0, 1fr);
-  background: linear-gradient(135deg, #eaf7f7 0%, #f7f2ec 100%);
+  background: var(--shell-gradient);
   position: relative;
   overflow: hidden;
 }
@@ -316,7 +328,7 @@ textarea:focus {
 .sidebar {
   border-right: 1px solid var(--hairline);
   background:
-    linear-gradient(180deg, rgba(18, 184, 134, 0.12), rgba(21, 151, 255, 0.08) 42%, rgba(245, 241, 236, 0.72)),
+    var(--sidebar-wash),
     var(--canvas-soft);
   padding: 18px;
   min-width: 0;
@@ -328,10 +340,10 @@ textarea:focus {
 
 .profile-row {
   padding: 12px;
-  border: 1px solid rgba(21, 151, 255, 0.14);
+  border: 1px solid rgba(var(--accent-companion-rgb), 0.14);
   border-radius: 8px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(234, 248, 245, 0.92)),
+    linear-gradient(135deg, color-mix(in srgb, var(--surface) 88%, transparent), color-mix(in srgb, var(--accent-soft) 70%, var(--surface))),
     var(--surface);
   box-shadow: var(--block-shadow);
 }
@@ -406,7 +418,7 @@ textarea:focus {
 
 .profile-bio {
   margin-top: 8px;
-  border: 1px solid rgba(21, 151, 255, 0.14);
+  border: 1px solid rgba(var(--accent-companion-rgb), 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.66);
   overflow: hidden;
@@ -456,7 +468,7 @@ textarea:focus {
 .bubble-theme-picker {
   margin-top: 12px;
   padding: 12px;
-  border: 1px solid rgba(18, 184, 134, 0.16);
+  border: 1px solid rgba(var(--accent-rgb), 0.16);
   border-radius: 8px;
   background:
     linear-gradient(135deg, var(--bubble-soft), rgba(255, 255, 255, 0.82)),
@@ -528,7 +540,7 @@ textarea:focus {
   border: 1px solid var(--hairline);
   border-radius: 14px;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 249, 0.96)),
+    var(--composer-wash),
     var(--surface);
   box-shadow: var(--shadow-soft);
   padding: 18px;
@@ -593,55 +605,34 @@ textarea:focus {
   font-size: 12px;
 }
 
-.appearance-swatch-grid {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-}
-
-.appearance-dye {
-  display: flex;
+.appearance-select {
+  display: grid;
+  grid-template-columns: 36px 1fr;
   align-items: center;
   gap: 10px;
-  color: var(--ink-muted);
-  font-size: 13px;
-  font-weight: 700;
 }
 
-.appearance-dye input[type='color'] {
-  width: 42px;
-  height: 32px;
+.appearance-select-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
   border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: transparent;
-  padding: 2px;
-  cursor: pointer;
 }
 
-.appearance-dye em {
-  font-style: normal;
-  color: var(--ink-subtle);
-  font-weight: 600;
-}
-
-.chat-bg-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.chat-bg-grid button {
-  min-height: 54px;
+.appearance-select select {
+  width: 100%;
+  min-height: 40px;
   border: 1px solid var(--hairline);
   border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   color: var(--ink);
-  font-size: 12px;
-  font-weight: 800;
-  padding: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0 12px;
 }
 
-.chat-bg-grid button.selected,
-.chat-bg-grid button:hover {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--hairline));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+.appearance-select select:disabled {
+  opacity: 0.72;
 }
 
 .appearance-bg-actions {
@@ -676,7 +667,7 @@ textarea:focus {
   grid-template-columns: 1fr 42px;
   margin-top: 14px;
   padding: 10px;
-  border: 1px solid rgba(21, 151, 255, 0.14);
+  border: 1px solid rgba(var(--accent-companion-rgb), 0.14);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.66);
 }
@@ -711,9 +702,9 @@ textarea:focus {
 
 .contact-item {
   width: 100%;
-  border: 1px solid rgba(21, 151, 255, 0.1);
+  border: 1px solid rgba(var(--accent-companion-rgb), 0.1);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.62);
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -724,9 +715,9 @@ textarea:focus {
 
 .contact-item:hover,
 .contact-item.selected {
-  border-color: rgba(18, 184, 134, 0.28);
+  border-color: rgba(var(--accent-rgb), 0.28);
   background:
-    linear-gradient(135deg, rgba(234, 248, 245, 0.96), rgba(236, 248, 255, 0.92)),
+    linear-gradient(135deg, color-mix(in srgb, var(--accent-soft) 70%, var(--surface)), color-mix(in srgb, var(--accent) 10%, var(--surface))),
     var(--accent-soft);
   box-shadow: var(--block-shadow);
 }
@@ -803,7 +794,7 @@ textarea:focus {
   grid-template-columns: minmax(0, 1fr) minmax(0, 0);
   grid-template-rows: minmax(0, 1fr);
   background:
-    linear-gradient(180deg, rgba(234, 248, 245, 0.92), rgba(251, 248, 244, 0.94)),
+    var(--chat-panel-wash, linear-gradient(180deg, rgba(234, 248, 245, 0.92), rgba(251, 248, 244, 0.94))),
     var(--canvas-soft);
   overflow: hidden;
 }
@@ -829,9 +820,9 @@ textarea:focus {
 .chat-header {
   min-width: 0;
   padding: 18px 24px;
-  border-bottom: 1px solid rgba(18, 184, 134, 0.16);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.16);
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.9)),
+    var(--composer-wash, linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.9))),
     var(--surface);
   backdrop-filter: blur(10px);
   z-index: 2;
@@ -867,7 +858,7 @@ textarea:focus {
 
 .planner-header-button {
   min-height: 34px;
-  border: 1px solid rgba(18, 184, 134, 0.22);
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
   color: var(--ink-muted);
@@ -977,7 +968,7 @@ textarea:focus {
 
 .planner-header-button.secure-on {
   color: var(--accent-strong, #0b7f5f);
-  box-shadow: inset 0 0 0 1px rgba(18, 184, 134, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28);
 }
 
 .secure-drawer-summary {
@@ -1009,9 +1000,9 @@ textarea:focus {
 
 .secure-drawer-action {
   min-height: 44px;
-  border: 1px solid rgba(18, 184, 134, 0.22);
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   padding: 0 18px;
   font-size: 14px;
@@ -1026,7 +1017,7 @@ textarea:focus {
 
 .secure-drawer-action.primary {
   border-color: transparent;
-  background: linear-gradient(135deg, #1597ff, #12b886);
+  background: var(--brand-gradient);
   color: #ffffff;
 }
 
@@ -1168,7 +1159,7 @@ textarea:focus {
   height: 40px;
   border: 1px solid var(--hairline-soft);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   padding: 0 12px;
   font-size: 14px;
@@ -1529,9 +1520,9 @@ textarea:focus {
   align-items: end;
   padding: 12px clamp(18px, 2.4vw, 40px) 18px;
   background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.88)),
+    var(--composer-wash, linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(234, 248, 245, 0.88))),
     var(--surface);
-  border-top: 1px solid rgba(18, 184, 134, 0.16);
+  border-top: 1px solid rgba(var(--accent-rgb), 0.16);
   z-index: 2;
 }
 
@@ -1854,9 +1845,9 @@ textarea:focus {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  border-left: 1px solid rgba(18, 184, 134, 0.16);
+  border-left: 1px solid rgba(var(--accent-rgb), 0.16);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(234, 248, 245, 0.9)),
+    var(--composer-wash),
     var(--surface);
 }
 
@@ -1871,7 +1862,7 @@ textarea:focus {
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  border-bottom: 1px solid rgba(18, 184, 134, 0.14);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.14);
 }
 
 .planner-drawer-title {
@@ -1895,7 +1886,7 @@ textarea:focus {
 
 .planner-close-button {
   height: 32px;
-  border: 1px solid rgba(18, 184, 134, 0.22);
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.76);
   color: var(--ink-muted);
@@ -1917,7 +1908,7 @@ textarea:focus {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 12px 14px;
-  border-bottom: 1px solid rgba(18, 184, 134, 0.12);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.12);
 }
 
 .planner-add-toggle {
@@ -1946,7 +1937,7 @@ textarea:focus {
 
 .planner-drawer-form button {
   height: 38px;
-  border: 1px solid rgba(18, 184, 134, 0.22);
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
   border-radius: 8px;
   background: var(--surface);
   color: var(--accent);
@@ -1958,7 +1949,7 @@ textarea:focus {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
   padding: 10px 14px;
-  border-bottom: 1px solid rgba(18, 184, 134, 0.12);
+  border-bottom: 1px solid rgba(var(--accent-rgb), 0.12);
 }
 
 .planner-filter-tabs button {
@@ -1974,7 +1965,7 @@ textarea:focus {
 }
 
 .planner-filter-tabs button.active {
-  border-color: rgba(18, 184, 134, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -1993,7 +1984,7 @@ textarea:focus {
   gap: 8px;
   padding: 12px 14px 18px;
   scrollbar-gutter: stable;
-  scrollbar-color: rgba(18, 184, 134, 0.42) rgba(255, 255, 255, 0.45);
+  scrollbar-color: rgba(var(--accent-rgb), 0.42) rgba(255, 255, 255, 0.45);
   scrollbar-width: thin;
 }
 
@@ -2004,7 +1995,7 @@ textarea:focus {
 .planner-drawer-list::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 999px;
-  background: rgba(18, 184, 134, 0.32);
+  background: rgba(var(--accent-rgb), 0.32);
   background-clip: content-box;
 }
 
@@ -2078,16 +2069,16 @@ textarea:focus {
 
 .planner-mini-actions button {
   min-height: 32px;
-  border: 1px solid #dfe7e4;
+  border: 1px solid var(--hairline);
   border-radius: 8px;
-  background: #ffffff;
-  color: #4f5d59;
+  background: var(--surface);
+  color: var(--ink-muted);
   font-size: 12px;
   font-weight: 900;
 }
 
 .planner-mini-actions button.active {
-  border-color: rgba(18, 184, 134, 0.28);
+  border-color: rgba(var(--accent-rgb), 0.28);
   background: #eaf8f1;
   color: #16835e;
 }
@@ -2122,7 +2113,7 @@ textarea:focus {
   height: 38px;
   border: 1px solid var(--hairline-soft);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   padding: 0 10px;
 }
@@ -2133,7 +2124,7 @@ textarea:focus {
   resize: vertical;
   border: 1px solid var(--hairline-soft);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--ink);
   padding: 10px;
   line-height: 1.5;
@@ -2157,7 +2148,7 @@ textarea:focus {
   min-height: 30px;
   border: 1px solid #f1c5bd;
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--danger);
   font-size: 12px;
   font-weight: 900;
@@ -2177,9 +2168,9 @@ textarea:focus {
   min-height: 32px;
   display: inline-grid;
   place-items: center;
-  border: 1px solid rgba(18, 184, 134, 0.22);
+  border: 1px solid rgba(var(--accent-rgb), 0.22);
   border-radius: 8px;
-  background: #ffffff;
+  background: var(--surface);
   color: var(--accent);
   font-size: 12px;
   font-weight: 900;
@@ -2215,7 +2206,7 @@ textarea:focus {
 }
 
 .moment-card.expanded {
-  border-color: rgba(18, 184, 134, 0.3);
+  border-color: rgba(var(--accent-rgb), 0.3);
   background: rgba(255, 255, 255, 0.92);
 }
 
@@ -2239,7 +2230,7 @@ textarea:focus {
   height: 74px;
   border: 0;
   border-radius: 8px;
-  background: rgba(18, 184, 134, 0.08);
+  background: rgba(var(--accent-rgb), 0.08);
   display: block;
   overflow: hidden;
   padding: 0;
@@ -2406,7 +2397,7 @@ textarea:focus {
 
 .admin-stat:hover:not(:disabled) {
   border-color: color-mix(in srgb, var(--accent) 35%, var(--hairline));
-  background: color-mix(in srgb, var(--accent) 8%, #fff);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
 }
 
 .admin-stat:disabled {
@@ -2576,7 +2567,7 @@ textarea:focus {
 
 .admin-user.selected {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--hairline));
-  background: color-mix(in srgb, var(--accent) 8%, #fff);
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
 }
 
 .admin-user.disabled {
@@ -2694,12 +2685,12 @@ textarea:focus {
 
 .planner-avatar-pair span:first-child {
   left: 0;
-  background: #1597ff;
+  background: var(--accent-blue);
 }
 
 .planner-avatar-pair span:last-child {
   right: 0;
-  background: #12b886;
+  background: var(--accent);
 }
 
 @media (max-width: 760px) {
@@ -2784,7 +2775,7 @@ textarea:focus {
     gap: 6px;
     padding: 8px 12px;
     background: rgba(255, 255, 255, 0.72);
-    border-bottom: 1px solid rgba(18, 184, 134, 0.12);
+    border-bottom: 1px solid rgba(var(--accent-rgb), 0.12);
   }
 
   .mobile-chat-tabs button {
@@ -2798,7 +2789,7 @@ textarea:focus {
   }
 
   .mobile-chat-tabs button.active {
-    border-color: rgba(18, 184, 134, 0.3);
+    border-color: rgba(var(--accent-rgb), 0.3);
     background: var(--accent-soft);
     color: var(--accent);
   }
@@ -2916,10 +2907,6 @@ textarea:focus {
     border-radius: 12px;
   }
 
-  .chat-bg-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .admin-panel {
     padding: 14px;
   }
@@ -2991,4 +2978,28 @@ textarea:focus {
     box-shadow: -18px 0 38px rgba(17, 17, 17, 0.12);
     z-index: 3;
   }
+}
+
+html[data-ui-mode="dark"] .auth-card,
+html[data-ui-mode="dark"] .secure-input-dialog,
+html[data-ui-mode="dark"] .contact-profile-dialog,
+html[data-ui-mode="dark"] .sticker-panel,
+html[data-ui-mode="dark"] .emoji-panel {
+  background: var(--surface);
+  border-color: var(--hairline);
+  color: var(--ink);
+}
+
+html[data-ui-mode="dark"] .profile-actions button,
+html[data-ui-mode="dark"] .planner-header-button,
+html[data-ui-mode="dark"] .planner-mini-actions button,
+html[data-ui-mode="dark"] .secure-drawer-action {
+  background: color-mix(in srgb, var(--surface-muted) 80%, var(--surface));
+  color: var(--ink);
+  border-color: var(--hairline);
+}
+
+html[data-ui-mode="dark"] .message-recalled,
+html[data-ui-mode="dark"] .chat-image-expired {
+  color: var(--ink-muted);
 }

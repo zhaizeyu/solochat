@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import crypto from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { adminUsername, databaseUrl, initialAdminPassword, normalizeBubbleTheme, normalizeChatBgPreset } from './config.js';
+import { adminUsername, databaseUrl, initialAdminPassword, normalizeBubbleTheme, normalizeChatBgPreset, normalizeUiTheme } from './config.js';
 import { storedImageUrlForClient } from './uploads.js';
 import { conversationKey, hashPassword, parseJson } from './utils.js';
 
@@ -52,8 +52,9 @@ export function rowToUser(row) {
     avatarDataUrl: row.avatarPath || '',
     avatarPath: row.avatarPath || null,
     bubbleTheme: row.bubbleTheme || 'mint',
-    chatBgPreset: row.chatBgPreset || 'soft',
+    chatBgPreset: row.chatBgPreset || 'mint',
     chatBgPath: row.chatBgPath || null,
+    uiTheme: row.uiTheme || 'mint',
     bio: row.bio || '',
     createdAt: row.createdAt,
     disabledAt: row.disabledAt || null,
@@ -139,6 +140,7 @@ export function userSelect(prefix = '') {
     ${prefix}bubble_theme AS "bubbleTheme",
     ${prefix}chat_bg_preset AS "chatBgPreset",
     ${prefix}chat_bg_path AS "chatBgPath",
+    ${prefix}ui_theme AS "uiTheme",
     ${prefix}bio AS bio,
     ${prefix}created_at AS "createdAt",
     ${prefix}disabled_at AS "disabledAt",
@@ -212,6 +214,7 @@ export function sanitizeUser(user) {
     bubbleTheme: normalizeBubbleTheme(user.bubbleTheme),
     chatBgPreset: normalizeChatBgPreset(user.chatBgPreset),
     chatBgDataUrl: storedImageUrlForClient(user.chatBgPath || user.chatBgDataUrl || ''),
+    uiTheme: normalizeUiTheme(user.uiTheme),
     bio: user.bio || '',
     createdAt: user.createdAt,
     disabledAt: user.disabledAt || null,
@@ -520,6 +523,7 @@ async function createSchema() {
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT \'\'');
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_bg_preset TEXT NOT NULL DEFAULT \'soft\'');
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_bg_path TEXT');
+  await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS ui_theme TEXT NOT NULL DEFAULT \'mint\'');
   await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS image_path TEXT');
   await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS image_expires_at TEXT');
   await query('ALTER TABLE messages ADD COLUMN IF NOT EXISTS image_deleted_at TEXT');
@@ -598,14 +602,15 @@ async function ensureAdminUser() {
   await getDb().prepare(`
     INSERT INTO users (
       id, username, display_name, password_hash, avatar_path, bubble_theme,
-      bio, created_at, disabled_at, deleted_username, is_admin
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ui_theme, bio, created_at, disabled_at, deleted_username, is_admin
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     crypto.randomUUID(),
     adminUsername,
     '管理员',
     hashPassword(initialAdminPassword),
     null,
+    'mint',
     'mint',
     '',
     new Date().toISOString(),

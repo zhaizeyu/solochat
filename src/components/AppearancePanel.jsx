@@ -1,15 +1,24 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { bubblePresets, bubbleThemeFromDye, chatBgPresets, resolveBubbleTheme, resolveChatBg } from '../lib/ui.jsx';
+import {
+  bubblePresets,
+  chatBgPresets,
+  resolveBubbleTheme,
+  resolveChatBg,
+  resolveUiTheme,
+  uiThemePresets
+} from '../lib/ui.jsx';
 import { readImageFile } from '../lib/media.js';
 
 function AppearancePanel({
   open,
   onClose,
+  uiTheme,
   bubbleTheme,
   chatBgPreset,
   chatBgDataUrl,
+  onUiThemeChange,
   onBubbleThemeChange,
   onChatBgPresetChange,
   onChatBgUpload,
@@ -17,12 +26,12 @@ function AppearancePanel({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const selectedUi = useMemo(() => resolveUiTheme(uiTheme), [uiTheme]);
   const selectedBubble = useMemo(() => resolveBubbleTheme(bubbleTheme), [bubbleTheme]);
   const selectedBg = useMemo(
     () => resolveChatBg(chatBgPreset, chatBgDataUrl),
     [chatBgPreset, chatBgDataUrl]
   );
-  const dyeValue = selectedBubble.dye || selectedBubble.start || '#12b886';
 
   useEffect(() => {
     if (!open) return undefined;
@@ -59,7 +68,7 @@ function AppearancePanel({
         <header className="appearance-header">
           <div>
             <h2 id="appearance-title">外观</h2>
-            <p>气泡会展示给对方；聊天背景仅自己可见。</p>
+            <p>界面 / 气泡 / 背景共用同一套风格；聊天背景仅自己可见，气泡会展示给对方。</p>
           </div>
           <button type="button" className="appearance-close" onClick={onClose} aria-label="关闭">
             关闭
@@ -68,44 +77,50 @@ function AppearancePanel({
 
         {error && <div className="inline-error">{error}</div>}
 
+        <section className="appearance-section" aria-label="界面主题">
+          <div className="appearance-section-head">
+            <strong>界面主题</strong>
+            <span>{selectedUi.blurb}</span>
+          </div>
+          <label className="appearance-select">
+            <span className="appearance-select-swatch" style={{ background: selectedUi.swatch }} />
+            <select
+              value={selectedUi.id}
+              disabled={busy}
+              onChange={(event) => run(() => onUiThemeChange(event.target.value))}
+            >
+              {uiThemePresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name} · {preset.blurb}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+
         <section className="appearance-section" aria-label="气泡颜色">
           <div className="appearance-section-head">
             <strong>气泡</strong>
-            <span>预设或自定义染色</span>
+            <span>与主题同款风格</span>
           </div>
-          <div className="bubble-theme-grid appearance-swatch-grid">
-            {bubblePresets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={!selectedBubble.dye && bubbleTheme === preset.id ? 'selected' : ''}
-                onClick={() => run(() => onBubbleThemeChange(preset.id))}
-                disabled={busy}
-                title={preset.name}
-                aria-label={preset.name}
-                aria-pressed={!selectedBubble.dye && bubbleTheme === preset.id}
-                style={{
-                  '--swatch-start': preset.start,
-                  '--swatch-end': preset.end,
-                  '--swatch-soft': preset.soft
-                }}
-              >
-                <span />
-              </button>
-            ))}
-          </div>
-          <label className="appearance-dye">
-            <span>染色</span>
-            <input
-              type="color"
-              value={dyeValue}
-              disabled={busy}
-              onChange={(event) => {
-                const next = bubbleThemeFromDye(event.target.value);
-                run(() => onBubbleThemeChange(next.id));
+          <label className="appearance-select">
+            <span
+              className="appearance-select-swatch"
+              style={{
+                background: `linear-gradient(135deg, ${selectedBubble.start}, ${selectedBubble.end})`
               }}
             />
-            <em>{selectedBubble.dye ? '自定义' : '点这里自选颜色'}</em>
+            <select
+              value={selectedBubble.id}
+              disabled={busy}
+              onChange={(event) => run(() => onBubbleThemeChange(event.target.value))}
+            >
+              {bubblePresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
           </label>
           <div
             className="bubble-theme-preview"
@@ -123,21 +138,27 @@ function AppearancePanel({
             <strong>聊天背景</strong>
             <span>预设或上传图片</span>
           </div>
-          <div className="chat-bg-grid">
-            {chatBgPresets.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={!chatBgDataUrl && chatBgPreset === preset.id ? 'selected' : ''}
-                onClick={() => run(() => onChatBgPresetChange(preset.id))}
-                disabled={busy}
-                aria-pressed={!chatBgDataUrl && chatBgPreset === preset.id}
-                style={{ background: preset.css }}
-              >
-                {preset.name}
-              </button>
-            ))}
-          </div>
+          <label className="appearance-select">
+            <span
+              className="appearance-select-swatch"
+              style={{ background: selectedBg.css || selectedUi.swatch }}
+            />
+            <select
+              value={chatBgDataUrl ? '' : selectedBg.id}
+              disabled={busy || Boolean(chatBgDataUrl)}
+              onChange={(event) => {
+                if (!event.target.value) return;
+                run(() => onChatBgPresetChange(event.target.value));
+              }}
+            >
+              {chatBgDataUrl && <option value="">自定义图片</option>}
+              {chatBgPresets.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="appearance-bg-actions">
             <label className="appearance-upload">
               <input
