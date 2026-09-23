@@ -17,6 +17,12 @@ import {
   rowToMessage
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
+import {
+  countCleanupMessages,
+  messageHideSql,
+  parseCleanupRequest,
+  runConversationCleanup
+} from '../message-hides.js';
 import { isSecureConversationActive } from './secure-conversations.js';
 import { storedImageUrlForClient } from '../uploads.js';
 import { conversationKey, messagePreview, parseJson, stringifyJson } from '../utils.js';
@@ -52,16 +58,82 @@ async function mapMessagesForClient(messages) {
   return mapped;
 }
 
+async function resolveContactConversation(user, contactId) {
+  const target = await getUserById(contactId);
+  if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) {
+    return null;
+  }
+  return {
+    target,
+    conversationId: conversationKey(user.id, target.id)
+  };
+}
+
 export async function handleMessages(req, res, pathName, user, url) {
   const db = getDb();
+  const hideSql = messageHideSql('m');
+
+  if (
+    req.method === 'POST'
+    && /^\/api\/messages\/[^/]+\/(?:cleanup|hide)(?:-preview)?$/.test(pathName)
+  ) {
+    const parts = pathName.split('/');
+    const contactId = parts[3];
+    const context = await resolveContactConversation(user, contactId);
+    if (!context) {
+      return json(res, 404, { message: '联系人不存在' });
+    }
+    const body = await readBody(req);
+    const isLegacyHide = pathName.includes('/hide');
+    const request = parseCleanupRequest(
+      isLegacyHide ? { ...body, scope: body.scope || 'self' } : body
+    );
+    if (request.error) {
+      return json(res, 400, { message: request.error });
+    }
+    if (pathName.endsWith('-preview')) {
+      const count = await countCleanupMessages(user.id, context.conversationId, request);
+      return json(res, 200, {
+        scope: request.scope,
+        mode: request.mode,
+        startAt: request.startAt,
+        endAt: request.endAt,
+        count,
+        hint: request.scope === 'both'
+          ? '双边清理将永久删除双方数据，不可恢复'
+          : '单边清理仅对自己隐藏，对方仍可见'
+      });
+    }
+    const result = await runConversationCleanup(user.id, context.conversationId, request);
+    if (isLegacyHide && result.scope === 'self') {
+      return json(res, 200, {
+        ok: true,
+        hide: result.hide,
+        hint: result.hint
+      });
+    }
+    return json(res, 200, {
+      ok: true,
+      ...result
+    });
+  }
 
   if (req.method === 'GET' && pathName.startsWith('/api/messages/')) {
     const contactId = pathName.split('/').pop();
-    const target = await getUserById(contactId);
-    if (!target || target.disabledAt || !(await areContacts(user.id, target.id))) {
+    if (
+      contactId === 'encrypted'
+      || contactId === 'hide'
+      || contactId === 'hide-preview'
+      || contactId === 'cleanup'
+      || contactId === 'cleanup-preview'
+    ) {
+      return false;
+    }
+    const context = await resolveContactConversation(user, contactId);
+    if (!context) {
       return json(res, 404, { message: '联系人不存在' });
     }
-    const key = conversationKey(user.id, target.id);
+    const key = context.conversationId;
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 50), 1), 100);
     const before = url.searchParams.get('before');
     const after = url.searchParams.get('after');
@@ -70,34 +142,37 @@ export async function handleMessages(req, res, pathName, user, url) {
     if (after) {
       rows = await db
         .prepare(`
-          SELECT ${messageSelect()}
-          FROM messages
-          WHERE conversation_id = ? AND created_at > ?
-          ORDER BY created_at ASC
+          SELECT ${messageSelect('m.')}
+          FROM messages m
+          WHERE m.conversation_id = ? AND m.created_at > ?
+            AND ${hideSql}
+          ORDER BY m.created_at ASC
           LIMIT ?
         `)
-        .all(key, after, limit);
+        .all(key, after, user.id, limit);
     } else if (before) {
       rows = (await db
         .prepare(`
-          SELECT ${messageSelect()}
-          FROM messages
-          WHERE conversation_id = ? AND created_at < ?
-          ORDER BY created_at DESC
+          SELECT ${messageSelect('m.')}
+          FROM messages m
+          WHERE m.conversation_id = ? AND m.created_at < ?
+            AND ${hideSql}
+          ORDER BY m.created_at DESC
           LIMIT ?
         `)
-        .all(key, before, limit))
+        .all(key, before, user.id, limit))
         .reverse();
     } else {
       rows = (await db
         .prepare(`
-          SELECT ${messageSelect()}
-          FROM messages
-          WHERE conversation_id = ?
-          ORDER BY created_at DESC
+          SELECT ${messageSelect('m.')}
+          FROM messages m
+          WHERE m.conversation_id = ?
+            AND ${hideSql}
+          ORDER BY m.created_at DESC
           LIMIT ?
         `)
-        .all(key, limit))
+        .all(key, user.id, limit))
         .reverse();
     }
 
@@ -106,8 +181,14 @@ export async function handleMessages(req, res, pathName, user, url) {
     const hasMore = firstCreatedAt
       ? Boolean(
           await db
-            .prepare('SELECT 1 FROM messages WHERE conversation_id = ? AND created_at < ? LIMIT 1')
-            .get(key, firstCreatedAt)
+            .prepare(`
+              SELECT 1 FROM messages m
+              WHERE m.conversation_id = ?
+                AND m.created_at < ?
+                AND ${hideSql}
+              LIMIT 1
+            `)
+            .get(key, firstCreatedAt, user.id)
         )
       : false;
     return json(res, 200, { messages: await mapMessagesForClient(messages), hasMore });

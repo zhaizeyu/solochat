@@ -8,10 +8,12 @@ import {
   userSelect
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
+import { messageHideSql } from '../message-hides.js';
 import { messagePreview, normalizeName } from '../utils.js';
 
 export async function handleContacts(req, res, pathName, user) {
   const db = getDb();
+  const hideSql = messageHideSql('m');
 
   if (req.method === 'GET' && pathName === '/api/contacts') {
     const rows = await db.prepare(`
@@ -41,6 +43,7 @@ export async function handleContacts(req, res, pathName, user) {
           WHEN ? < u.id THEN ? || ':' || u.id
           ELSE u.id || ':' || ?
         END
+          AND ${hideSql}
         ORDER BY m.created_at DESC
         LIMIT 1
       ) last_plain ON TRUE
@@ -51,6 +54,14 @@ export async function handleContacts(req, res, pathName, user) {
           WHEN ? < u.id THEN ? || ':' || u.id
           ELSE u.id || ':' || ?
         END
+          AND NOT EXISTS (
+            SELECT 1
+            FROM conversation_message_hides h
+            WHERE h.user_id = ?
+              AND h.conversation_id = e.conversation_id
+              AND e.created_at >= h.start_at
+              AND e.created_at <= h.end_at
+          )
         ORDER BY e.created_at DESC
         LIMIT 1
       ) last_encrypted ON TRUE
@@ -64,6 +75,7 @@ export async function handleContacts(req, res, pathName, user) {
           AND m.to_id = ?
           AND m.read_at IS NULL
           AND m.recalled_at IS NULL
+          AND ${hideSql}
       ) plain_unread ON TRUE
       LEFT JOIN LATERAL (
         SELECT COUNT(*)::int AS unread_count
@@ -75,6 +87,14 @@ export async function handleContacts(req, res, pathName, user) {
           AND e.recipient_id = ?
           AND e.read_at IS NULL
           AND e.recalled_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM conversation_message_hides h
+            WHERE h.user_id = ?
+              AND h.conversation_id = e.conversation_id
+              AND e.created_at >= h.start_at
+              AND e.created_at <= h.end_at
+          )
       ) encrypted_unread ON TRUE
       WHERE c.owner_id = ? AND u.disabled_at IS NULL
       ORDER BY COALESCE(
@@ -87,10 +107,10 @@ export async function handleContacts(req, res, pathName, user) {
         ''
       ) DESC
     `).all(
-      user.id, user.id, user.id,
-      user.id, user.id, user.id,
       user.id, user.id, user.id, user.id,
       user.id, user.id, user.id, user.id,
+      user.id, user.id, user.id, user.id, user.id,
+      user.id, user.id, user.id, user.id, user.id,
       user.id
     );
     const contacts = rows.map((row) => {

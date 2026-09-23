@@ -1243,6 +1243,20 @@ export default function App() {
             upsertMessages(data.message);
             await refreshContacts();
           }}
+          onHideMessages={async (payload) => {
+            await api.cleanupMessages(selected.id, { scope: 'self', ...payload });
+            setMessages([]);
+            setHasOlderMessages(false);
+            await loadLatestMessages(selected.id);
+            await refreshContacts();
+          }}
+          onCleanupMessages={async (payload) => {
+            await api.cleanupMessages(selected.id, payload);
+            setMessages([]);
+            setHasOlderMessages(false);
+            await loadLatestMessages(selected.id);
+            await refreshContacts();
+          }}
           secureChat={secureChat}
           secureChatSupported={secureChatSupported}
           onEnableSecureChat={enableSecureChat}

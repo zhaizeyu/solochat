@@ -11,6 +11,19 @@ import { CouplePlannerPanel } from './CouplePlannerPanel.jsx';
 import { CoupleMomentsPanel } from './CoupleMomentsPanel.jsx';
 import { SecureChatPanel } from './SecureChatPanel.jsx';
 
+function toDatetimeLocalValue(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function fromDatetimeLocalValue(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const date = new Date(text);
+  if (!Number.isFinite(date.getTime())) return '';
+  return date.toISOString();
+}
+
 function ChatWindow({
   contact,
   messages,
@@ -27,6 +40,8 @@ function ChatWindow({
   onAddSticker,
   onDeleteStickers,
   onRecall,
+  onHideMessages,
+  onCleanupMessages,
   secureChat,
   secureChatSupported,
   onEnableSecureChat,
@@ -51,6 +66,14 @@ function ChatWindow({
   const [savingStickerMessageIds, setSavingStickerMessageIds] = useState([]);
   const [sideTool, setSideTool] = useState(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [hideMode, setHideMode] = useState('all');
+  const [clearScope, setClearScope] = useState('self');
+  const [hideStartLocal, setHideStartLocal] = useState('');
+  const [hideEndLocal, setHideEndLocal] = useState('');
+  const [hideBusy, setHideBusy] = useState(false);
+  const [hideError, setHideError] = useState('');
+  const [hidePreviewCount, setHidePreviewCount] = useState(null);
+  const [clearPanelOpen, setClearPanelOpen] = useState(false);
   const [mobilePane, setMobilePane] = useState('chat');
   const [plannerTasks, setPlannerTasks] = useState([]);
   const [moments, setMoments] = useState([]);
@@ -98,6 +121,7 @@ function ChatWindow({
   useEffect(() => {
     setQuote(null);
     setProfileOpen(false);
+    setClearPanelOpen(false);
     setMobilePane('chat');
     setSideTool(null);
     setPlannerTasks([]);
@@ -324,6 +348,93 @@ function ChatWindow({
 
   function getBubblePreset(themeId) {
     return resolveBubbleTheme(themeId);
+  }
+
+  function buildCleanupPayload() {
+    const base = hideMode === 'all'
+      ? { mode: 'all' }
+      : {
+          mode: 'range',
+          startAt: fromDatetimeLocalValue(hideStartLocal),
+          endAt: fromDatetimeLocalValue(hideEndLocal)
+        };
+    return { scope: clearScope, ...base };
+  }
+
+  async function refreshHidePreview() {
+    setHideError('');
+    setHidePreviewCount(null);
+    const payload = buildCleanupPayload();
+    if (payload.mode === 'range' && (!payload.startAt || !payload.endAt)) {
+      return;
+    }
+    try {
+      const data = await api.previewCleanupMessages(contact.id, payload);
+      setHidePreviewCount(data.count);
+    } catch (err) {
+      setHideError(err?.message || '预览失败');
+    }
+  }
+
+  async function confirmHideMessages() {
+    setHideBusy(true);
+    setHideError('');
+    try {
+      const payload = buildCleanupPayload();
+      if (payload.mode === 'range' && (!payload.startAt || !payload.endAt)) {
+        throw new Error('请选择起止时间');
+      }
+      if (payload.mode === 'range' && payload.startAt > payload.endAt) {
+        throw new Error('开始时间不能晚于结束时间');
+      }
+      const preview = hidePreviewCount == null
+        ? await api.previewCleanupMessages(contact.id, payload)
+        : { count: hidePreviewCount };
+      const count = Number(preview.count || 0);
+      const scopeLabel = payload.mode === 'all' ? '全部聊天记录' : '所选时间段内的聊天记录';
+      const confirmed = window.confirm(
+        payload.scope === 'both'
+          ? (count > 0
+            ? `将永久删除双方共 ${count} 条${scopeLabel}，不可恢复。确定继续？`
+            : '所选范围内没有可删除的消息。')
+          : (count > 0
+            ? `将对自己隐藏 ${count} 条${scopeLabel}。对方仍可见，确定继续？`
+            : '所选范围内没有可隐藏的消息。仍要记录这次清理吗？')
+      );
+      if (!confirmed) return;
+      if (count === 0 && payload.scope === 'both') return;
+      if (onCleanupMessages) {
+        await onCleanupMessages(payload);
+      } else {
+        await onHideMessages?.(payload);
+      }
+      setClearPanelOpen(false);
+      setProfileOpen(false);
+      setHidePreviewCount(null);
+    } catch (err) {
+      setHideError(err?.message || '清理失败');
+    } finally {
+      setHideBusy(false);
+    }
+  }
+
+  function openClearPanel() {
+    const end = new Date();
+    const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+    setClearScope('self');
+    setHideMode('all');
+    setHideStartLocal(toDatetimeLocalValue(start));
+    setHideEndLocal(toDatetimeLocalValue(end));
+    setHideError('');
+    setHidePreviewCount(null);
+    setClearPanelOpen(true);
+  }
+
+  function openProfile() {
+    setHideError('');
+    setHidePreviewCount(null);
+    setClearPanelOpen(false);
+    setProfileOpen(true);
   }
 
   function getMessageBubbleStyle(preset, transparent = false) {
@@ -568,7 +679,7 @@ function ChatWindow({
           <button type="button" className="mobile-back-button" onClick={onBack} aria-label="返回联系人">
             返回
           </button>
-          <button type="button" className="chat-profile-button" onClick={() => setProfileOpen(true)} aria-label="查看联系人简介">
+          <button type="button" className="chat-profile-button" onClick={openProfile} aria-label="查看联系人简介">
             <Avatar user={contact} />
           </button>
           <div className="chat-header-copy">
@@ -646,7 +757,171 @@ function ChatWindow({
                 <span>个人简介</span>
                 <p>{contact.bio || '还没有填写简介'}</p>
               </div>
-              <button type="button" onClick={() => setProfileOpen(false)}>关闭</button>
+              <div className="contact-profile-actions">
+                <button type="button" className="contact-clear-entry" onClick={openClearPanel}>
+                  <span className="contact-clear-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 7h16" />
+                      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      <path d="M7 7l1 12a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2l1-12" />
+                      <path d="M10 11v6M14 11v6" />
+                    </svg>
+                  </span>
+                  <span className="contact-clear-copy">
+                    <strong>清理聊天记录</strong>
+                    <em>仅自己隐藏，或双方永久删除</em>
+                  </span>
+                  <span className="contact-clear-chevron" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="contact-profile-footer">
+                <button type="button" className="contact-profile-close" onClick={() => setProfileOpen(false)}>
+                  关闭
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
+        {clearPanelOpen && (
+          <div className="profile-dialog-backdrop" role="presentation" onClick={() => !hideBusy && setClearPanelOpen(false)}>
+            <section
+              className="history-clear-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="history-clear-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <header className="history-clear-sheet-head">
+                <div>
+                  <h3 id="history-clear-title">清理聊天记录</h3>
+                  <p>与 {contact.displayName} 的会话</p>
+                </div>
+                <button type="button" className="history-clear-close" disabled={hideBusy} onClick={() => setClearPanelOpen(false)}>
+                  关闭
+                </button>
+              </header>
+
+              <div className="history-scope-grid" role="radiogroup" aria-label="清理对象">
+                <button
+                  type="button"
+                  className={`history-scope-card ${clearScope === 'self' ? 'selected' : ''}`}
+                  aria-pressed={clearScope === 'self'}
+                  disabled={hideBusy}
+                  onClick={() => {
+                    setClearScope('self');
+                    setHidePreviewCount(null);
+                  }}
+                >
+                  <strong>仅自己隐藏</strong>
+                  <span>单边清理，对方仍可见这些消息</span>
+                </button>
+                <button
+                  type="button"
+                  className={`history-scope-card danger ${clearScope === 'both' ? 'selected' : ''}`}
+                  aria-pressed={clearScope === 'both'}
+                  disabled={hideBusy}
+                  onClick={() => {
+                    setClearScope('both');
+                    setHidePreviewCount(null);
+                  }}
+                >
+                  <strong>双方彻底删除</strong>
+                  <span>从服务器永久删除，双方都不可恢复</span>
+                </button>
+              </div>
+
+              <div className="history-range-seg" role="tablist" aria-label="清理范围">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={hideMode === 'all'}
+                  className={hideMode === 'all' ? 'active' : ''}
+                  disabled={hideBusy}
+                  onClick={() => {
+                    setHideMode('all');
+                    setHidePreviewCount(null);
+                  }}
+                >
+                  全部记录
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={hideMode === 'range'}
+                  className={hideMode === 'range' ? 'active' : ''}
+                  disabled={hideBusy}
+                  onClick={() => {
+                    setHideMode('range');
+                    setHidePreviewCount(null);
+                  }}
+                >
+                  按时间段
+                </button>
+              </div>
+
+              {hideMode === 'range' && (
+                <div className="history-range-fields">
+                  <label>
+                    <span>开始</span>
+                    <input
+                      type="datetime-local"
+                      value={hideStartLocal}
+                      disabled={hideBusy}
+                      onChange={(event) => {
+                        setHideStartLocal(event.target.value);
+                        setHidePreviewCount(null);
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <span>结束</span>
+                    <input
+                      type="datetime-local"
+                      value={hideEndLocal}
+                      disabled={hideBusy}
+                      onChange={(event) => {
+                        setHideEndLocal(event.target.value);
+                        setHidePreviewCount(null);
+                      }}
+                    />
+                  </label>
+                </div>
+              )}
+
+              <div className={`history-consequence ${clearScope === 'both' ? 'danger' : ''}`}>
+                {clearScope === 'both' ? (
+                  <>
+                    <strong>双边清理</strong>
+                    <p>将从服务器彻底删除所选范围内的消息与相关图片，你和对方都无法再看到，且不可恢复。</p>
+                  </>
+                ) : (
+                  <>
+                    <strong>单边清理</strong>
+                    <p>只在你这边隐藏所选消息，对方设备与账号仍保留完整记录。</p>
+                  </>
+                )}
+              </div>
+
+              <div className="history-clear-actions">
+                <button type="button" className="secondary" disabled={hideBusy} onClick={() => void refreshHidePreview()}>
+                  预览条数
+                </button>
+                <button
+                  type="button"
+                  className={clearScope === 'both' ? 'danger' : 'primary'}
+                  disabled={hideBusy}
+                  onClick={() => void confirmHideMessages()}
+                >
+                  {hideBusy ? '处理中…' : clearScope === 'both' ? '确认彻底删除' : '确认隐藏'}
+                </button>
+              </div>
+              {hidePreviewCount != null && (
+                <em className="history-clear-preview">
+                  {clearScope === 'both' ? '将删除约' : '将隐藏约'} {hidePreviewCount} 条消息
+                </em>
+              )}
+              {hideError && <div className="inline-error">{hideError}</div>}
             </section>
           </div>
         )}

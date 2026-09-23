@@ -6,6 +6,7 @@ import {
   getUserById
 } from '../db.js';
 import { json, readBody } from '../http-utils.js';
+import { messageHideSql } from '../message-hides.js';
 import { conversationKey, parseJson, stringifyJson } from '../utils.js';
 import { storedImageUrlForClient } from '../uploads.js';
 import {
@@ -818,47 +819,42 @@ export async function handleSecureConversations(req, res, pathName, user, url) {
     const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || 50), 1), 100);
     const before = url.searchParams.get('before');
     const after = url.searchParams.get('after');
+    const hideSql = messageHideSql('m');
+    const selectSql = `
+        SELECT m.message_id AS id, m.conversation_id AS "conversationId", m.sender_id AS "fromId",
+               m.recipient_id AS "toId", m.ciphertext, m.iv, m.sequence_number AS "sequenceNumber",
+               m.crypto_version AS "cryptoVersion", m.key_version AS "keyVersion",
+               m.created_at AS "createdAt", m.read_at AS "readAt", m.recalled_at AS "recalledAt",
+               m.image_path AS "imagePath", m.image_expires_at AS "imageExpiresAt",
+               m.image_deleted_at AS "imageDeletedAt"
+        FROM encrypted_messages m
+    `;
     let rows;
     if (after) {
       rows = await db.prepare(`
-        SELECT message_id AS id, conversation_id AS "conversationId", sender_id AS "fromId",
-               recipient_id AS "toId", ciphertext, iv, sequence_number AS "sequenceNumber",
-               crypto_version AS "cryptoVersion", key_version AS "keyVersion",
-               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt",
-               image_path AS "imagePath", image_expires_at AS "imageExpiresAt",
-               image_deleted_at AS "imageDeletedAt"
-        FROM encrypted_messages
-        WHERE conversation_id = ? AND created_at > ?
-        ORDER BY created_at ASC
+        ${selectSql}
+        WHERE m.conversation_id = ? AND m.created_at > ?
+          AND ${hideSql}
+        ORDER BY m.created_at ASC
         LIMIT ?
-      `).all(context.conversationId, after, limit);
+      `).all(context.conversationId, after, user.id, limit);
     } else if (before) {
       rows = await db.prepare(`
-        SELECT message_id AS id, conversation_id AS "conversationId", sender_id AS "fromId",
-               recipient_id AS "toId", ciphertext, iv, sequence_number AS "sequenceNumber",
-               crypto_version AS "cryptoVersion", key_version AS "keyVersion",
-               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt",
-               image_path AS "imagePath", image_expires_at AS "imageExpiresAt",
-               image_deleted_at AS "imageDeletedAt"
-        FROM encrypted_messages
-        WHERE conversation_id = ? AND created_at < ?
-        ORDER BY created_at DESC
+        ${selectSql}
+        WHERE m.conversation_id = ? AND m.created_at < ?
+          AND ${hideSql}
+        ORDER BY m.created_at DESC
         LIMIT ?
-      `).all(context.conversationId, before, limit);
+      `).all(context.conversationId, before, user.id, limit);
       rows.reverse();
     } else {
       rows = await db.prepare(`
-        SELECT message_id AS id, conversation_id AS "conversationId", sender_id AS "fromId",
-               recipient_id AS "toId", ciphertext, iv, sequence_number AS "sequenceNumber",
-               crypto_version AS "cryptoVersion", key_version AS "keyVersion",
-               created_at AS "createdAt", read_at AS "readAt", recalled_at AS "recalledAt",
-               image_path AS "imagePath", image_expires_at AS "imageExpiresAt",
-               image_deleted_at AS "imageDeletedAt"
-        FROM encrypted_messages
-        WHERE conversation_id = ?
-        ORDER BY created_at DESC
+        ${selectSql}
+        WHERE m.conversation_id = ?
+          AND ${hideSql}
+        ORDER BY m.created_at DESC
         LIMIT ?
-      `).all(context.conversationId, limit);
+      `).all(context.conversationId, user.id, limit);
       rows.reverse();
     }
     const messages = [];

@@ -72,6 +72,30 @@ const api = {
   recallMessage(messageId) {
     return this.request(`/api/messages/${messageId}/recall`, { method: 'PATCH' });
   },
+  previewHideMessages(contactId, payload) {
+    return this.request(`/api/messages/${contactId}/cleanup-preview`, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'self', ...payload })
+    });
+  },
+  hideMessages(contactId, payload) {
+    return this.request(`/api/messages/${contactId}/cleanup`, {
+      method: 'POST',
+      body: JSON.stringify({ scope: 'self', ...payload })
+    });
+  },
+  previewCleanupMessages(contactId, payload) {
+    return this.request(`/api/messages/${contactId}/cleanup-preview`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+  cleanupMessages(contactId, payload) {
+    return this.request(`/api/messages/${contactId}/cleanup`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
   inviteSecureConversation(payload) {
     return this.request('/api/secure-conversations/invite', { method: 'POST', body: JSON.stringify(payload) });
   },

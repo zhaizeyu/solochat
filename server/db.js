@@ -519,6 +519,18 @@ async function createSchema() {
 
     CREATE INDEX IF NOT EXISTS idx_couple_moments_conversation_created
       ON couple_moments(conversation_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS conversation_message_hides (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      start_at TEXT NOT NULL,
+      end_at TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_conversation_message_hides_lookup
+      ON conversation_message_hides(user_id, conversation_id, start_at, end_at);
   `);
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT \'\'');
   await query('ALTER TABLE users ADD COLUMN IF NOT EXISTS chat_bg_preset TEXT NOT NULL DEFAULT \'soft\'');
