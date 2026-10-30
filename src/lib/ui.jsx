@@ -11,6 +11,9 @@ const bubblePresets = [
   { id: 'blush', name: '蜜桃', start: '#ff8e6b', end: '#e64980', soft: '#fff0f5', shadow: 'rgba(230, 73, 128, 0.2)' },
   { id: 'ocean', name: '海蓝', start: '#22b8cf', end: '#1c7ed6', soft: '#ebf5fc', shadow: 'rgba(28, 126, 214, 0.18)' },
   { id: 'sand', name: '纸感', start: '#dd6b20', end: '#b7791f', soft: '#f7f0e4', shadow: 'rgba(183, 121, 31, 0.2)' },
+  { id: 'office', name: '办公灰', start: '#6b747b', end: '#4f5a62', soft: '#eef0f1', shadow: 'rgba(79, 90, 98, 0.16)' },
+  { id: 'fog', name: '雾蓝', start: '#788d98', end: '#5c717d', soft: '#edf2f4', shadow: 'rgba(92, 113, 125, 0.16)' },
+  { id: 'taupe', name: '暖灰', start: '#8a7e72', end: '#675d54', soft: '#f2efeb', shadow: 'rgba(103, 93, 84, 0.16)' },
   { id: 'dark', name: '暗夜', start: '#7aa2ff', end: '#4f8cff', soft: '#2a2a2a', shadow: 'rgba(79, 140, 255, 0.28)' }
 ];
 
@@ -36,13 +39,28 @@ const chatBgPresets = [
     css: 'linear-gradient(180deg, #f5efe4 0%, #f8f4ec 100%)'
   },
   {
+    id: 'office',
+    name: '办公灰',
+    css: 'linear-gradient(180deg, #f1f3f4 0%, #e9edef 100%)'
+  },
+  {
+    id: 'fog',
+    name: '雾蓝',
+    css: 'linear-gradient(180deg, #edf2f4 0%, #e7edef 100%)'
+  },
+  {
+    id: 'taupe',
+    name: '暖灰',
+    css: 'linear-gradient(180deg, #f3f0ec 0%, #ece8e2 100%)'
+  },
+  {
     id: 'dark',
     name: '暗夜',
     css: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)'
   }
 ];
 
-const styleFamilyIds = new Set(['mint', 'blush', 'ocean', 'sand', 'dark']);
+const styleFamilyIds = new Set(['mint', 'blush', 'ocean', 'sand', 'office', 'fog', 'taupe', 'dark']);
 
 const legacyStyleMap = {
   rose: 'blush',
@@ -141,6 +159,66 @@ const uiThemePresets = [
     inkSubtle: '#8a7d68',
     shell: ['#f5efe4', '#f8f4ec'],
     sidebarTail: '245, 241, 232'
+  },
+  {
+    id: 'office',
+    name: '办公灰',
+    blurb: '低调隐身 · 中性灰',
+    mode: 'light',
+    accent: '#59656d',
+    companion: '#78838a',
+    canvas: '#edf0f1',
+    canvasSoft: '#e7eaeb',
+    surface: '#f9faf9',
+    surfaceMuted: '#dde2e4',
+    soft: '#eef0f1',
+    hairline: '#cbd1d4',
+    hairlineSoft: '#d9dee0',
+    ink: '#252a2d',
+    inkMuted: '#626b70',
+    inkSubtle: '#7b8489',
+    shell: ['#e9edef', '#f3f4f2'],
+    sidebarTail: '237, 240, 241'
+  },
+  {
+    id: 'fog',
+    name: '雾蓝',
+    blurb: '低饱和 · 冷静蓝灰',
+    mode: 'light',
+    accent: '#5c717d',
+    companion: '#7c909a',
+    canvas: '#edf2f4',
+    canvasSoft: '#e5ecef',
+    surface: '#fbfcfc',
+    surfaceMuted: '#dce5e8',
+    soft: '#edf2f4',
+    hairline: '#c9d4d9',
+    hairlineSoft: '#d8e1e4',
+    ink: '#243037',
+    inkMuted: '#5f6f77',
+    inkSubtle: '#788890',
+    shell: ['#e8eef1', '#f2f4f3'],
+    sidebarTail: '237, 242, 244'
+  },
+  {
+    id: 'taupe',
+    name: '暖灰',
+    blurb: '文档质感 · 柔和暖灰',
+    mode: 'light',
+    accent: '#6f645a',
+    companion: '#91867b',
+    canvas: '#f1efeb',
+    canvasSoft: '#ebe8e3',
+    surface: '#fbfaf8',
+    surfaceMuted: '#e4dfd8',
+    soft: '#f2efeb',
+    hairline: '#d3ccc3',
+    hairlineSoft: '#e0dbd4',
+    ink: '#302c28',
+    inkMuted: '#6d665e',
+    inkSubtle: '#857d74',
+    shell: ['#eeebe6', '#f5f3ef'],
+    sidebarTail: '241, 239, 235'
   },
   {
     id: 'dark',

@@ -34,6 +34,9 @@ test('normalize style helpers map legacy and dye values onto shared presets', as
   assert.equal(normalizeUiTheme('amber'), 'sand');
   assert.equal(normalizeUiTheme('slate'), 'dark');
   assert.equal(normalizeUiTheme('soft'), 'mint');
+  assert.equal(normalizeUiTheme('office'), 'office');
+  assert.equal(normalizeUiTheme('fog'), 'fog');
+  assert.equal(normalizeUiTheme('taupe'), 'taupe');
   assert.equal(normalizeUiTheme('dye:#000000'), 'dark');
   assert.equal(normalizeUiTheme('dye:#12b886'), 'mint');
   assert.equal(normalizeUiTheme('nope'), 'mint');
@@ -54,26 +57,26 @@ test('normalize style helpers map legacy and dye values onto shared presets', as
 test('user can update ui theme, bubble theme and chat background presets', { skip: !hasDatabase }, async () => {
   const user = await register(uname('app'));
 
-  const ui = await patchMe(user, { uiTheme: 'ocean' });
+  const ui = await patchMe(user, { uiTheme: 'office' });
   assert.equal(ui.status, 200);
-  assert.equal(ui.body.user.uiTheme, 'ocean');
+  assert.equal(ui.body.user.uiTheme, 'office');
 
-  const bubble = await patchMe(ui.body.user, { bubbleTheme: 'blush' });
+  const bubble = await patchMe(ui.body.user, { bubbleTheme: 'fog' });
   assert.equal(bubble.status, 200);
-  assert.equal(bubble.body.user.bubbleTheme, 'blush');
-  assert.equal(bubble.body.user.uiTheme, 'ocean');
+  assert.equal(bubble.body.user.bubbleTheme, 'fog');
+  assert.equal(bubble.body.user.uiTheme, 'office');
 
-  const bg = await patchMe(bubble.body.user, { chatBgPreset: 'sand' });
+  const bg = await patchMe(bubble.body.user, { chatBgPreset: 'taupe' });
   assert.equal(bg.status, 200);
-  assert.equal(bg.body.user.chatBgPreset, 'sand');
+  assert.equal(bg.body.user.chatBgPreset, 'taupe');
   assert.equal(bg.body.user.chatBgDataUrl || '', '');
-  assert.equal(bg.body.user.uiTheme, 'ocean');
-  assert.equal(bg.body.user.bubbleTheme, 'blush');
+  assert.equal(bg.body.user.uiTheme, 'office');
+  assert.equal(bg.body.user.bubbleTheme, 'fog');
 
   const stored = await state.getUserById(user.id);
-  assert.equal(stored.uiTheme, 'ocean');
-  assert.equal(stored.bubbleTheme, 'blush');
-  assert.equal(stored.chatBgPreset, 'sand');
+  assert.equal(stored.uiTheme, 'office');
+  assert.equal(stored.bubbleTheme, 'fog');
+  assert.equal(stored.chatBgPreset, 'taupe');
 });
 
 test('appearance APIs accept legacy aliases and reject unknown presets', { skip: !hasDatabase }, async () => {

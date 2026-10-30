@@ -86,9 +86,9 @@ export const chatImageCleanupHour = Math.min(
 /** IANA timezone for the daily cleanup clock. Default Asia/Shanghai. */
 export const chatImageCleanupTimeZone = process.env.CHAT_IMAGE_CLEANUP_TZ || 'Asia/Shanghai';
 export const chatImageUploadHourlyLimit = 60;
-export const bubbleThemes = new Set(['mint', 'blush', 'ocean', 'sand', 'dark']);
-export const chatBgPresets = new Set(['mint', 'blush', 'ocean', 'sand', 'dark']);
-export const uiThemes = new Set(['mint', 'blush', 'ocean', 'sand', 'dark']);
+export const bubbleThemes = new Set(['mint', 'blush', 'ocean', 'sand', 'office', 'fog', 'taupe', 'dark']);
+export const chatBgPresets = new Set(['mint', 'blush', 'ocean', 'sand', 'office', 'fog', 'taupe', 'dark']);
+export const uiThemes = new Set(['mint', 'blush', 'ocean', 'sand', 'office', 'fog', 'taupe', 'dark']);
 export const adminUsername = 'admin';
 export const initialAdminPassword = process.env.ADMIN_PASSWORD || 'admin123';
 
