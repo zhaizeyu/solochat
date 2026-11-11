@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 import { call, hasDatabase, register, state } from '../test-support/helpers.js';
 
@@ -116,6 +118,23 @@ test('custom chat background image can be set and cleared by preset', { skip: !h
   assert.equal(cleared.status, 200);
   assert.equal(cleared.body.user.chatBgPreset, 'ocean');
   assert.equal(cleared.body.user.chatBgDataUrl || '', '');
+});
+
+test('replacing an avatar returns a fresh image URL', { skip: !hasDatabase }, async () => {
+  const user = await register(uname('ava'));
+  const { localUploadsDir } = await import('../server/config.js');
+
+  const first = await patchMe(user, { avatarDataUrl: tinyPng });
+  assert.equal(first.status, 200);
+  assert.ok(first.body.user.avatarDataUrl);
+  const firstPath = path.join(localUploadsDir, first.body.user.avatarDataUrl.replace(/^\/uploads\//, ''));
+  assert.equal(existsSync(firstPath), true);
+
+  const second = await patchMe(first.body.user, { avatarDataUrl: tinyPng });
+  assert.equal(second.status, 200);
+  assert.ok(second.body.user.avatarDataUrl);
+  assert.notEqual(second.body.user.avatarDataUrl, first.body.user.avatarDataUrl);
+  assert.equal(existsSync(firstPath), false);
 });
 
 test('user can update profile bio and display name', { skip: !hasDatabase }, async () => {

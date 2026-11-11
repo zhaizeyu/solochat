@@ -74,6 +74,8 @@ export const tlsKeyPath = process.env.TLS_KEY_PATH || path.join(rootDir, 'data',
 export const useHttps = String(process.env.USE_HTTPS || 'false').toLowerCase() === 'true';
 export const recallWindowMs = 8 * 60 * 1000;
 export const maxImageDataUrlLength = 4_300_000;
+export const avatarImageMaxBytes = 700 * 1024;
+export const avatarImageMaxDataUrlLength = Math.ceil(avatarImageMaxBytes * 4 / 3) + 128;
 export const chatImageMaxBytes = 2 * 1024 * 1024;
 export const chatImageMaxDataUrlLength = Math.ceil(chatImageMaxBytes * 4 / 3) + 128;
 /** Temporary chat images are kept until the next day's daily cleanup. */

@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {
+  avatarImageMaxDataUrlLength,
   isValidBubbleTheme,
   isValidUiTheme,
   maxImageDataUrlLength,
@@ -108,6 +109,7 @@ export async function handleCurrentUser(req, res, pathName, user) {
   if (req.method === 'PATCH' && pathName === '/api/me') {
     const body = await readBody(req);
     const updates = {};
+    let previousAvatar = null;
     if (Object.hasOwn(body, 'displayName')) {
       const displayName = normalizeName(body.displayName);
       if (displayName.length < 1 || displayName.length > 24) {
@@ -117,10 +119,13 @@ export async function handleCurrentUser(req, res, pathName, user) {
     }
     if (Object.hasOwn(body, 'avatarDataUrl')) {
       const avatarDataUrl = String(body.avatarDataUrl || '');
-      if (avatarDataUrl && (!isImageDataUrl(avatarDataUrl) || avatarDataUrl.length > maxImageDataUrlLength)) {
+      if (avatarDataUrl && (!isImageDataUrl(avatarDataUrl) || avatarDataUrl.length > avatarImageMaxDataUrlLength)) {
         return json(res, 400, { message: '头像需为 700KB 以内的图片' });
       }
-      updates.avatarPath = avatarDataUrl ? await saveImageDataUrl(avatarDataUrl, 'avatars', user.id) : null;
+      previousAvatar = user.avatarPath || user.avatarDataUrl || null;
+      updates.avatarPath = avatarDataUrl
+        ? await saveImageDataUrl(avatarDataUrl, 'avatars', `${user.id}-${crypto.randomUUID()}`)
+        : null;
     }
     if (Object.hasOwn(body, 'bubbleTheme')) {
       const bubbleTheme = String(body.bubbleTheme || '');
@@ -172,6 +177,9 @@ export async function handleCurrentUser(req, res, pathName, user) {
     }
     if (Object.hasOwn(updates, 'avatarPath')) {
       await db.prepare('UPDATE users SET avatar_path = ? WHERE id = ?').run(updates.avatarPath, user.id);
+      if (previousAvatar && previousAvatar !== updates.avatarPath) {
+        await deleteStoredImage(previousAvatar).catch(() => {});
+      }
     }
     if (Object.hasOwn(updates, 'bubbleTheme')) {
       await db.prepare('UPDATE users SET bubble_theme = ? WHERE id = ?').run(updates.bubbleTheme, user.id);

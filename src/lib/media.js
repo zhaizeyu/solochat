@@ -1,6 +1,8 @@
 const momentImageMaxBytes = 3 * 1024 * 1024;
 const chatImageMaxBytes = 2 * 1024 * 1024;
 const chatImageMaxSourceBytes = 20 * 1024 * 1024;
+const avatarImageMaxBytes = 700 * 1024;
+const avatarImageMaxSourceBytes = 20 * 1024 * 1024;
 
 function readImageFile(file) {
   return new Promise((resolve, reject) => {
@@ -51,14 +53,14 @@ function loadImageElement(dataUrl) {
   });
 }
 
-async function compressImageDataUrl(dataUrl, maxBytes, onProgress) {
-  if (estimateDataUrlBytes(dataUrl) <= maxBytes) {
+async function compressImageDataUrl(dataUrl, maxBytes, onProgress, options = {}) {
+  if (!options.forceReencode && estimateDataUrlBytes(dataUrl) <= maxBytes) {
     onProgress?.(1);
     return dataUrl;
   }
   const image = await loadImageElement(dataUrl);
   onProgress?.(0.45);
-  let maxEdge = 1920;
+  let maxEdge = options.maxEdge || 1920;
   let quality = 0.86;
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const scale = Math.min(1, maxEdge / Math.max(image.width, image.height, 1));
@@ -77,7 +79,35 @@ async function compressImageDataUrl(dataUrl, maxBytes, onProgress) {
     if (quality > 0.52) quality -= 0.08;
     else maxEdge = Math.floor(maxEdge * 0.78);
   }
-  throw new Error('临时图片需为 2MB 以内的图片');
+  throw new Error(options.errorMessage || '图片压缩失败');
+}
+
+async function readAvatarImageFile(file) {
+  if (!file?.type?.startsWith('image/')) {
+    throw new Error('请选择图片文件');
+  }
+  if (file.size > avatarImageMaxSourceBytes) {
+    throw new Error('头像原图过大，请选择 20MB 以内的图片');
+  }
+
+  const dataUrl = await dataUrlForFile(file);
+  const supportedType = /^(image\/png|image\/jpe?g|image\/gif|image\/webp)$/i.test(file.type);
+  if (supportedType && estimateDataUrlBytes(dataUrl) <= avatarImageMaxBytes) {
+    return dataUrl;
+  }
+
+  try {
+    return await compressImageDataUrl(dataUrl, avatarImageMaxBytes, undefined, {
+      forceReencode: !supportedType,
+      maxEdge: 1024,
+      errorMessage: '头像压缩失败，请换一张图片重试'
+    });
+  } catch (error) {
+    if (error?.message === '图片解析失败') {
+      throw new Error('当前浏览器无法处理此图片，请在相册中另存为 JPEG 后重试');
+    }
+    throw error;
+  }
 }
 
 async function readChatImageFile(file, { onProgress } = {}) {
@@ -104,7 +134,9 @@ async function readChatImageFile(file, { onProgress } = {}) {
 export {
   momentImageMaxBytes,
   chatImageMaxBytes,
+  avatarImageMaxBytes,
   readImageFile,
+  readAvatarImageFile,
   dataUrlForFile,
   readMomentImageFile,
   readChatImageFile

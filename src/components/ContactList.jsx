@@ -6,7 +6,7 @@ import { Textarea } from '../../components/ui/textarea.jsx';
 import { Avatar } from './Avatar.jsx';
 import { AppearancePanel } from './AppearancePanel.jsx';
 import { Button } from '../lib/ui.jsx';
-import { readImageFile } from '../lib/media.js';
+import { readAvatarImageFile } from '../lib/media.js';
 
 function ContactList({
   contacts,
@@ -158,7 +158,7 @@ function ContactList({
     setProfileBusy(true);
     setProfileError('');
     try {
-      const avatarDataUrl = await readImageFile(file);
+      const avatarDataUrl = await readAvatarImageFile(file);
       await onUpdateAvatar(avatarDataUrl);
     } catch (err) {
       setProfileError(err.message);
